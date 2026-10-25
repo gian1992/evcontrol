@@ -1,0 +1,255 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "EV Control — initial setup",
+        "description": "Automatic EV charging driven by your solar array.\n\nYou will need Home Assistant sensors for: PV production, house consumption, home battery and the wallbox. Vehicle sensors and the solar forecast are optional, but they improve the decisions considerably.\n\nEvery section stays editable from Options afterwards, one at a time, without redoing this wizard."
+      },
+      "inverter": {
+        "title": "Solar array",
+        "description": "The two sensors everything else depends on.",
+        "data": {
+          "pv_power_entity": "Power produced by the panels (W). This must be the inverter's gross production, not the energy exported to the grid.",
+          "voltage_entity": "Grid voltage (V). Used to convert watts into amps: at 230 V, 6 A is 1380 W. If a three-phase line-to-line voltage (400 V) ends up here, every current calculation comes out wrong."
+        }
+      },
+      "consumption": {
+        "title": "House consumption",
+        "description": "Surplus is PV minus house consumption. House consumption must exclude the car: otherwise the wallbox would count as a load and would zero out its own surplus the moment charging starts.",
+        "data": {
+          "consumption_entity": "House consumption (W). If this sensor also includes the wallbox, turn on the switch below.",
+          "consumption_includes_ev": "Does the sensor above already include the wallbox power? If so it is subtracted. Getting this switch wrong is the most common mistake: surplus reads lower than it really is and the car never starts.",
+          "total_consumption_entity": "Total consumption including the car (W, optional but strongly recommended). Set alongside the house-only meter, the car's real power is the difference between the two. That is far more reliable than the wallbox setpoint, which says what you asked for rather than what the car is actually drawing: with the car nearly full, paused, or conditioning its pack, the two diverge considerably."
+        }
+      },
+      "battery": {
+        "title": "Home battery",
+        "description": "The household storage battery.\n\nYou do not have to declare how much power it can absorb: the planner measures that continuously, because it is exactly the quantity that varies — around 1 kW with a warm pack, up to 2.5 kW on a cool morning. What you decide is the floor, in the Smart charging section.",
+        "data": {
+          "battery_soc_entity": "Battery state of charge (%).",
+          "battery_power_entity": "Battery power (W, optional but strongly recommended). Sign convention: positive when charging, negative when discharging. Without this sensor the planner cannot measure how much the battery is able to absorb and falls back on a fixed estimate.",
+          "home_battery_capacity_kwh": "Nominal battery capacity (kWh). Used to project the SOC it will reach by sunset: if the maths says it will fill up by itself anyway, holding power back for it would only produce export, and the car takes priority. Enter the real value — the default is only a placeholder.",
+          "battery_min_soc": "SOC below which the battery is no longer used as a source (%). Applies to Power mode.",
+          "battery_start_charge_soc": "Minimum SOC for classic ECO mode (%). Ignored when the smart planner is active: there, protection comes from the floor and the hold thresholds, which are more precise than a single cutoff.",
+          "battery_max_drain_power": "Maximum power that may be drawn from the battery (W). Applies to Power mode.",
+          "battery_reservation_power": "Battery reservation in Normal mode (W). Applies to Normal mode only: in the solar modes the reservation is dynamic and this value is not read."
+        }
+      },
+      "charger": {
+        "title": "Wallbox",
+        "description": "The wall box.\n\nBelow the minimum current almost every wallbox suspends the charge and opens the contactor. That is why the planner treats every pass through zero as a costly event to be accounted for, rather than as the ordinary consequence of a cloud.",
+        "data": {
+          "charger_current_entity": "The number entity that sets the charging current (e.g. number.xxx_charging_current). It is the only thing automatic control writes to.",
+          "charger_start_entity": "Start charging button. Used only by manual commands and services, never by automatic control.",
+          "charger_stop_entity": "Stop charging button. As above: manual only.",
+          "charger_min_current": "Minimum charging current (A). IEC 61851 sets this at 6 A; below it the wallbox pauses.",
+          "charger_max_current": "Maximum wallbox current (A).",
+          "charger_status_entity": "Wallbox status sensor (optional). Used to recognise Idle / Charging / SuspendedEV in the diagnostic logs."
+        }
+      },
+      "ev_vehicle": {
+        "title": "Electric vehicle",
+        "description": "The car's data. Every sensor is optional, but without the vehicle SOC the AUTO modes cannot work out how long is needed, and the planner stays at the NORMAL level throughout.",
+        "data": {
+          "ev_soc_entity": "Car state of charge (%). Required for AUTO and AUTO-ECO: it is where the calculation of the energy still missing starts.",
+          "ev_power_auto_entity": "Power measured on the vehicle side (W, optional). More accurate than the wallbox sensor, if the car exposes it.",
+          "ev_battery_capacity_kwh": "Capacity of the car's battery (kWh). BYD Dolphin Surf: 42 kWh. It determines the energy required and therefore the slack — how long the system can afford to wait for the sun."
+        }
+      },
+      "schedule": {
+        "title": "Charging schedule",
+        "description": "The time by which the car has to be at 100%.\n\nThis is where slack comes from: the ratio between the time you have and the time you need. On a Saturday morning with a Monday target the slack is around 15 and the home battery becomes untouchable; once it drops below 1.1, hybrid grid charging takes over.\n\nLeave days without a deadline empty. With no target at all the planner stays at the NORMAL level and charges on sunlight only.",
+        "data": {
+          "target_schedule_monday": "Monday — charged by",
+          "target_schedule_tuesday": "Tuesday — charged by",
+          "target_schedule_wednesday": "Wednesday — charged by",
+          "target_schedule_thursday": "Thursday — charged by",
+          "target_schedule_friday": "Friday — charged by",
+          "target_schedule_saturday": "Saturday — charged by",
+          "target_schedule_sunday": "Sunday — charged by"
+        }
+      },
+      "auto": {
+        "title": "AUTO mode",
+        "description": "Parameters for the AUTO and AUTO-ECO modes.",
+        "data": {
+          "automatic_charge_current": "Reference current (A). It has two uses: it is the current of hybrid grid charging once the deadline turns critical, and it is the yardstick for working out \"how long is needed\" and therefore the slack. Raising it makes charging look faster, which delays the deadline alarm.",
+          "auto_phase1_soc_threshold": "Phase 1 threshold (%). Below this SOC the car is treated as critical and charges immediately, at night too and even with the planner active. Set it to 10% to effectively switch this behaviour off."
+        }
+      },
+      "smart": {
+        "title": "Smart charging",
+        "description": "The solar planner that governs ECO, AUTO and AUTO-ECO. Normal and Power are left alone.\n\nThe rule is three lines:\n• it starts when there is enough surplus to run the wallbox at its minimum;\n• it holds at least that minimum for as long as the panels produce, even if the house is taking all the surplus — the battery makes up the difference;\n• it stops only when production is over, or the home battery has fallen below its threshold.\n\nAbove the minimum the current follows the surplus, so nothing goes to the grid.",
+        "data": {
+          "smart_enabled": "Enable the planner. Turning it off brings back the old 10-minute ECO and AUTO timers.",
+          "solar_min_soc": "★ Minimum home battery SOC (%). Below this value charging stops. It is one of only two conditions that stop it.",
+          "solar_stop_pv_w": "★ Production below which the day is considered over (W). The other, and last, stop condition. Keep it low: charging STARTS when there is enough surplus for the minimum, but it HOLDS for as long as the panels produce anything. The huge distance between the two conditions is the whole anti-cycling mechanism — once open, the session reaches sunset whatever the house does in the meantime.",
+          "smart_batt_floor_w": "Power guaranteed to the home battery (W). It does not decide whether to start — it decides how much current the car may take BEYOND the minimum: everything left above this floor goes to the car instead of to the grid.",
+          "smart_batt_max_reserve_w": "Cap on the battery reservation (W). Limits how much power may be set aside for it even if it absorbed more than that in a lucky moment. Set it to the rated charging power of your storage.",
+          "smart_export_target_w": "Accepted export (W). Zero means: I do not want to send anything to the grid.",
+          "smart_import_deadband_w": "Import tolerated before reacting (W). Avoids chasing every momentary appliance in the house by dropping the car's current for a few seconds.",
+          "smart_max_stops_per_day": "Hard cap on daily stop/start cycles. Once spent, charging does not resume until the next day, except in a critical emergency. The design target is 1 per day: if you regularly see 3, a threshold needs tuning, not the cap raising.",
+          "smart_min_off_min": "Minimum pause after a stop (min). Prevents hunting. With the solar thresholds acting as hysteresis, spurious stops should no longer happen, so 20 minutes is enough: what upsets a car is restarts in quick succession, not a restart after half an hour.",
+          "smart_start_dwell_s": "Confirmation before starting (s). The surplus has to hold for this long before the wallbox is touched: nothing is commanded while waiting, so waiting costs nothing.",
+          "smart_stop_dwell_s": "Confirmation before stopping (s). Production has to stay below the threshold for this whole time before the session closes.",
+          "smart_batt_share_soc_low": "Start of sharing (%). Below this SOC the home battery has full priority in the fine regulation.",
+          "smart_batt_share_soc_high": "Full sharing (%). Above this SOC the battery is considered practically safe and the car may take everything left over.",
+          "smart_untouchable_slack": "Slack beyond which the home battery is untouchable. 3 means: I have three times the time I need, so I wait for the sun instead of discharging the house. On a Saturday with a Monday target the slack is about 15. Raise it to be more protective of the battery.",
+          "smart_tight_slack": "Slack below which the deadline starts to tighten and the battery gives up a great deal more. Between this value and 1.1 you are in the TIGHT level.",
+          "smart_ramp_up_a": "Maximum rise per cycle (A). Limiting the rise matters as much as limiting the fall: jumping straight to the target overshoots the real surplus and forces a correction back down immediately afterwards.",
+          "smart_ramp_down_a": "Maximum fall per cycle (A). Higher means reacting sooner to a sudden load, lower means fewer oscillations.",
+          "smart_headroom_ema_s": "Surplus filter (s). A moving average, so a single noisy sample neither opens nor closes a session. At 0 the filter is disabled.",
+          "smart_capability_window_min": "Measurement window for battery capability (min). The maximum observed over the interval is kept, and only from samples taken while the battery was not competing with the car — otherwise the measurement fools itself."
+        }
+      },
+      "smart_forecast": {
+        "title": "Solar forecast (Solcast)",
+        "description": "Every field is optional: without a forecast the planner works just the same, only closed-loop on the sensors.\n\nWith Solcast it can additionally: refuse a start because the sun is fading, check that there will still be surplus in half an hour, and work out whether the home battery will fill up by itself before sunset anyway — in which case holding power back for it would only produce export.\n\nForecast values are recalibrated against your array using the observed ratio between real production and the model.",
+        "data": {
+          "solcast_remaining_today_entity": "Forecast remaining for today (kWh). Drives the projection of the battery SOC at sunset.",
+          "solcast_tomorrow_entity": "Forecast for tomorrow (kWh). With deadlines beyond tomorrow, it checks that the forecast sun really covers the car's needs before granting the most protective level.",
+          "solcast_power_now_entity": "Power forecast for now (W). Serves as the reference both for the trend and for calibration against your array.",
+          "solcast_power_30min_entity": "Power forecast in 30 minutes (W). Decides whether the window is long enough to be worth a start.",
+          "solcast_power_1h_entity": "Power forecast in 1 hour (W). Compared against current power it gives the trend: above +15% the sun is rising, below −15% it is fading."
+        }
+      },
+      "control": {
+        "title": "Grid and refresh",
+        "description": "Supply contract limits and control-loop frequency.",
+        "data": {
+          "grid_max_current_amps": "Maximum contract current (A). 32 A at 230 V is 7.36 kW single-phase. It caps hybrid grid charging once the deadline turns critical.",
+          "grid_voltage": "Nominal grid voltage (V). Normally 230 V single-phase.",
+          "refresh_rate": "How often everything is recalculated (s). Every planner confirmation time is counted in multiples of this value."
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "EV Control is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EV Control — configuration",
+        "description": "Pick a section, edit it, and you land back here. You can fix as many as you like in one go.\n\nSections with a dot contain unsaved changes. They are all written together when you press «Save and close»: that way the integration reloads once, and a charge in progress is not interrupted on every tweak."
+      },
+      "inverter": {
+        "title": "Solar array",
+        "description": "The two sensors everything else depends on.",
+        "data": {
+          "pv_power_entity": "Power produced by the panels (W). This must be the inverter's gross production, not the energy exported to the grid.",
+          "voltage_entity": "Grid voltage (V). Used to convert watts into amps: at 230 V, 6 A is 1380 W. If a three-phase line-to-line voltage (400 V) ends up here, every current calculation comes out wrong."
+        }
+      },
+      "consumption": {
+        "title": "House consumption",
+        "description": "Surplus is PV minus house consumption. House consumption must exclude the car: otherwise the wallbox would count as a load and would zero out its own surplus the moment charging starts.",
+        "data": {
+          "consumption_entity": "House consumption (W). If this sensor also includes the wallbox, turn on the switch below.",
+          "consumption_includes_ev": "Does the sensor above already include the wallbox power? If so it is subtracted. Getting this switch wrong is the most common mistake: surplus reads lower than it really is and the car never starts.",
+          "total_consumption_entity": "Total consumption including the car (W, optional but strongly recommended). Set alongside the house-only meter, the car's real power is the difference between the two. That is far more reliable than the wallbox setpoint, which says what you asked for rather than what the car is actually drawing: with the car nearly full, paused, or conditioning its pack, the two diverge considerably."
+        }
+      },
+      "battery": {
+        "title": "Home battery",
+        "description": "The household storage battery.\n\nYou do not have to declare how much power it can absorb: the planner measures that continuously, because it is exactly the quantity that varies — around 1 kW with a warm pack, up to 2.5 kW on a cool morning. What you decide is the floor, in the Smart charging section.",
+        "data": {
+          "battery_soc_entity": "Battery state of charge (%).",
+          "battery_power_entity": "Battery power (W, optional but strongly recommended). Sign convention: positive when charging, negative when discharging. Without this sensor the planner cannot measure how much the battery is able to absorb and falls back on a fixed estimate.",
+          "home_battery_capacity_kwh": "Nominal battery capacity (kWh). Used to project the SOC it will reach by sunset: if the maths says it will fill up by itself anyway, holding power back for it would only produce export, and the car takes priority. Enter the real value — the default is only a placeholder.",
+          "battery_min_soc": "SOC below which the battery is no longer used as a source (%). Applies to Power mode.",
+          "battery_start_charge_soc": "Minimum SOC for classic ECO mode (%). Ignored when the smart planner is active: there, protection comes from the floor and the hold thresholds, which are more precise than a single cutoff.",
+          "battery_max_drain_power": "Maximum power that may be drawn from the battery (W). Applies to Power mode.",
+          "battery_reservation_power": "Battery reservation in Normal mode (W). Applies to Normal mode only: in the solar modes the reservation is dynamic and this value is not read."
+        }
+      },
+      "charger": {
+        "title": "Wallbox",
+        "description": "The wall box.\n\nBelow the minimum current almost every wallbox suspends the charge and opens the contactor. That is why the planner treats every pass through zero as a costly event to be accounted for, rather than as the ordinary consequence of a cloud.",
+        "data": {
+          "charger_current_entity": "The number entity that sets the charging current (e.g. number.xxx_charging_current). It is the only thing automatic control writes to.",
+          "charger_start_entity": "Start charging button. Used only by manual commands and services, never by automatic control.",
+          "charger_stop_entity": "Stop charging button. As above: manual only.",
+          "charger_min_current": "Minimum charging current (A). IEC 61851 sets this at 6 A; below it the wallbox pauses.",
+          "charger_max_current": "Maximum wallbox current (A).",
+          "charger_status_entity": "Wallbox status sensor (optional). Used to recognise Idle / Charging / SuspendedEV in the diagnostic logs."
+        }
+      },
+      "ev_vehicle": {
+        "title": "Electric vehicle",
+        "description": "The car's data. Every sensor is optional, but without the vehicle SOC the AUTO modes cannot work out how long is needed, and the planner stays at the NORMAL level throughout.",
+        "data": {
+          "ev_soc_entity": "Car state of charge (%). Required for AUTO and AUTO-ECO: it is where the calculation of the energy still missing starts.",
+          "ev_power_auto_entity": "Power measured on the vehicle side (W, optional). More accurate than the wallbox sensor, if the car exposes it.",
+          "ev_battery_capacity_kwh": "Capacity of the car's battery (kWh). BYD Dolphin Surf: 42 kWh. It determines the energy required and therefore the slack — how long the system can afford to wait for the sun."
+        }
+      },
+      "schedule": {
+        "title": "Charging schedule",
+        "description": "The time by which the car has to be at 100%.\n\nThis is where slack comes from: the ratio between the time you have and the time you need. On a Saturday morning with a Monday target the slack is around 15 and the home battery becomes untouchable; once it drops below 1.1, hybrid grid charging takes over.\n\nLeave days without a deadline empty. With no target at all the planner stays at the NORMAL level and charges on sunlight only.",
+        "data": {
+          "target_schedule_monday": "Monday — charged by",
+          "target_schedule_tuesday": "Tuesday — charged by",
+          "target_schedule_wednesday": "Wednesday — charged by",
+          "target_schedule_thursday": "Thursday — charged by",
+          "target_schedule_friday": "Friday — charged by",
+          "target_schedule_saturday": "Saturday — charged by",
+          "target_schedule_sunday": "Sunday — charged by"
+        }
+      },
+      "auto": {
+        "title": "AUTO mode",
+        "description": "Parameters for the AUTO and AUTO-ECO modes.",
+        "data": {
+          "automatic_charge_current": "Reference current (A). It has two uses: it is the current of hybrid grid charging once the deadline turns critical, and it is the yardstick for working out \"how long is needed\" and therefore the slack. Raising it makes charging look faster, which delays the deadline alarm.",
+          "auto_phase1_soc_threshold": "Phase 1 threshold (%). Below this SOC the car is treated as critical and charges immediately, at night too and even with the planner active. Set it to 10% to effectively switch this behaviour off."
+        }
+      },
+      "smart": {
+        "title": "Smart charging",
+        "description": "The solar planner that governs ECO, AUTO and AUTO-ECO. Normal and Power are left alone.\n\nThe rule is three lines:\n• it starts when there is enough surplus to run the wallbox at its minimum;\n• it holds at least that minimum for as long as the panels produce, even if the house is taking all the surplus — the battery makes up the difference;\n• it stops only when production is over, or the home battery has fallen below its threshold.\n\nAbove the minimum the current follows the surplus, so nothing goes to the grid.",
+        "data": {
+          "smart_enabled": "Enable the planner. Turning it off brings back the old 10-minute ECO and AUTO timers.",
+          "solar_min_soc": "★ Minimum home battery SOC (%). Below this value charging stops. It is one of only two conditions that stop it.",
+          "solar_stop_pv_w": "★ Production below which the day is considered over (W). The other, and last, stop condition. Keep it low: charging STARTS when there is enough surplus for the minimum, but it HOLDS for as long as the panels produce anything. The huge distance between the two conditions is the whole anti-cycling mechanism — once open, the session reaches sunset whatever the house does in the meantime.",
+          "smart_batt_floor_w": "Power guaranteed to the home battery (W). It does not decide whether to start — it decides how much current the car may take BEYOND the minimum: everything left above this floor goes to the car instead of to the grid.",
+          "smart_batt_max_reserve_w": "Cap on the battery reservation (W). Limits how much power may be set aside for it even if it absorbed more than that in a lucky moment. Set it to the rated charging power of your storage.",
+          "smart_export_target_w": "Accepted export (W). Zero means: I do not want to send anything to the grid.",
+          "smart_import_deadband_w": "Import tolerated before reacting (W). Avoids chasing every momentary appliance in the house by dropping the car's current for a few seconds.",
+          "smart_max_stops_per_day": "Hard cap on daily stop/start cycles. Once spent, charging does not resume until the next day, except in a critical emergency. The design target is 1 per day: if you regularly see 3, a threshold needs tuning, not the cap raising.",
+          "smart_min_off_min": "Minimum pause after a stop (min). Prevents hunting. With the solar thresholds acting as hysteresis, spurious stops should no longer happen, so 20 minutes is enough: what upsets a car is restarts in quick succession, not a restart after half an hour.",
+          "smart_start_dwell_s": "Confirmation before starting (s). The surplus has to hold for this long before the wallbox is touched: nothing is commanded while waiting, so waiting costs nothing.",
+          "smart_stop_dwell_s": "Confirmation before stopping (s). Production has to stay below the threshold for this whole time before the session closes.",
+          "smart_batt_share_soc_low": "Start of sharing (%). Below this SOC the home battery has full priority in the fine regulation.",
+          "smart_batt_share_soc_high": "Full sharing (%). Above this SOC the battery is considered practically safe and the car may take everything left over.",
+          "smart_untouchable_slack": "Slack beyond which the home battery is untouchable. 3 means: I have three times the time I need, so I wait for the sun instead of discharging the house. On a Saturday with a Monday target the slack is about 15. Raise it to be more protective of the battery.",
+          "smart_tight_slack": "Slack below which the deadline starts to tighten and the battery gives up a great deal more. Between this value and 1.1 you are in the TIGHT level.",
+          "smart_ramp_up_a": "Maximum rise per cycle (A). Limiting the rise matters as much as limiting the fall: jumping straight to the target overshoots the real surplus and forces a correction back down immediately afterwards.",
+          "smart_ramp_down_a": "Maximum fall per cycle (A). Higher means reacting sooner to a sudden load, lower means fewer oscillations.",
+          "smart_headroom_ema_s": "Surplus filter (s). A moving average, so a single noisy sample neither opens nor closes a session. At 0 the filter is disabled.",
+          "smart_capability_window_min": "Measurement window for battery capability (min). The maximum observed over the interval is kept, and only from samples taken while the battery was not competing with the car — otherwise the measurement fools itself."
+        }
+      },
+      "smart_forecast": {
+        "title": "Solar forecast (Solcast)",
+        "description": "Every field is optional: without a forecast the planner works just the same, only closed-loop on the sensors.\n\nWith Solcast it can additionally: refuse a start because the sun is fading, check that there will still be surplus in half an hour, and work out whether the home battery will fill up by itself before sunset anyway — in which case holding power back for it would only produce export.\n\nForecast values are recalibrated against your array using the observed ratio between real production and the model.",
+        "data": {
+          "solcast_remaining_today_entity": "Forecast remaining for today (kWh). Drives the projection of the battery SOC at sunset.",
+          "solcast_tomorrow_entity": "Forecast for tomorrow (kWh). With deadlines beyond tomorrow, it checks that the forecast sun really covers the car's needs before granting the most protective level.",
+          "solcast_power_now_entity": "Power forecast for now (W). Serves as the reference both for the trend and for calibration against your array.",
+          "solcast_power_30min_entity": "Power forecast in 30 minutes (W). Decides whether the window is long enough to be worth a start.",
+          "solcast_power_1h_entity": "Power forecast in 1 hour (W). Compared against current power it gives the trend: above +15% the sun is rising, below −15% it is fading."
+        }
+      },
+      "control": {
+        "title": "Grid and refresh",
+        "description": "Supply contract limits and control-loop frequency.",
+        "data": {
+          "grid_max_current_amps": "Maximum contract current (A). 32 A at 230 V is 7.36 kW single-phase. It caps hybrid grid charging once the deadline turns critical.",
+          "grid_voltage": "Nominal grid voltage (V). Normally 230 V single-phase.",
+          "refresh_rate": "How often everything is recalculated (s). Every planner confirmation time is counted in multiples of this value."
+        }
+      }
+    }
+  }
+}
