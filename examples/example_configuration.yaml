@@ -1,0 +1,75 @@
+# Example configuration for EV Control component
+# This shows how to configure the component for a typical setup with:
+# - Fronius Primo solar inverter
+# - Tesla Powerwall battery
+# - Tesla Model 3 or similar EV
+
+# Add this to your configuration.yaml or use the UI config flow (recommended):
+
+# UI Configuration (Recommended - use Home Assistant Settings > Devices & Services)
+
+# Manual YAML Configuration (Advanced):
+# evcontrol:
+#   - name: EV Control
+#     pv_power_entity: sensor.fronius_primo_ac_power
+#     voltage_entity: sensor.fronius_primo_voltage
+#     consumption_entity: sensor.fronius_meter_energy_real_ac
+#     consumption_includes_ev: true
+#     battery_soc_entity: sensor.powerwall_battery_soc
+#     #     battery_max_drain_power: 2500  # 2500W from battery
+#     battery_min_soc: 20
+#     battery_start_charge_soc: 70
+#     charger_start_entity: button.tesla_charger_start
+#     charger_stop_entity: button.tesla_charger_stop
+#     charger_max_current: 32
+#     charger_min_current: 6
+#     grid_max_power: 12
+#     refresh_rate: 20
+#     sold_power_entity: sensor.fronius_primo_energy_sold
+#     import_power_entity: sensor.fronius_primo_energy_imported
+
+# Example sensor entities you might have (these are examples):
+# - sensor.fronius_primo_ac_power (PV generation in W)
+# - sensor.fronius_primo_voltage (Grid voltage in V)
+# - sensor.fronius_meter_energy_real_ac (House consumption in W, includes Tesla)
+# - sensor.tesla_model_3_power (Tesla power consumption in W)
+# - sensor.powerwall_battery_soc (Battery state of charge in %)
+# - button.tesla_charger_start (Tesla charger start button)
+# - button.tesla_charger_stop (Tesla charger stop button)
+
+# After setup via UI, entities will be available:
+# - sensor.evcontrol_surplus_power
+# - sensor.evcontrol_available_battery_power
+# - sensor.evcontrol_available_charging_current
+# - number.evcontrol_grid_power_limit
+# - number.evcontrol_normal_mode_base_current
+# - switch.evcontrol_charging_enabled
+# - switch.evcontrol_eco_mode
+# - switch.evcontrol_normal_mode
+# - switch.evcontrol_power_mode
+# - button.evcontrol_start_charging
+# - button.evcontrol_stop_charging
+
+# Example automation to start charging when EV is connected:
+# automation:
+#   - alias: Auto-start EV charging
+#     trigger:
+#       platform: state
+#       entity_id: binary_sensor.tesla_model_3_connected
+#       to: "on"
+#     action:
+#       - service: button.press
+#         target:
+#           entity_id: button.evcontrol_start_charging
+#       - service: switch.turn_on
+#         target:
+#           entity_id: switch.evcontrol_eco_mode
+#
+#   - alias: Switch to Power mode at night
+#     trigger:
+#       platform: time
+#       at: "23:00:00"
+#     action:
+#       - service: switch.turn_on
+#         target:
+#           entity_id: switch.evcontrol_power_mode

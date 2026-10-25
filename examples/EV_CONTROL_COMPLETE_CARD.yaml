@@ -1,0 +1,330 @@
+# ============================================================================
+# EV CONTROL - COMPLETE LOVELACE CARD
+# ============================================================================
+# Copy this entire card into your Lovelace dashboard
+# This is a single, self-contained card with all controls and visualizations
+# ============================================================================
+
+type: custom:html-template-card
+content: |
+  <style>
+    .ev-card {
+      background: linear-gradient(135deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.1) 100%);
+      border-radius: 16px;
+      padding: 24px;
+      color: #fff;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    .ev-header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    
+    .ev-title {
+      font-size: 24px;
+      font-weight: bold;
+      margin: 0 0 8px 0;
+      color: #fff;
+    }
+    
+    .ev-subtitle {
+      font-size: 14px;
+      color: #aaa;
+      margin: 0;
+    }
+    
+    .ev-car-container {
+      display: flex;
+      justify-content: center;
+      margin: 20px 0;
+    }
+    
+    .ev-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 12px;
+      margin: 20px 0;
+    }
+    
+    .ev-stat-box {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+    }
+    
+    .ev-stat-label {
+      font-size: 12px;
+      color: #aaa;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    
+    .ev-stat-value {
+      font-size: 18px;
+      font-weight: bold;
+      color: #fff;
+    }
+    
+    .ev-controls {
+      margin-top: 20px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      padding-top: 16px;
+    }
+    
+    .ev-control-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+      align-items: center;
+      background: rgba(255,255,255,0.03);
+      padding: 12px;
+      border-radius: 8px;
+    }
+    
+    .ev-control-label {
+      font-size: 13px;
+      min-width: 100px;
+      color: #aaa;
+    }
+    
+    .ev-control-content {
+      flex: 1;
+    }
+    
+    .ev-button {
+      background: rgba(100, 150, 255, 0.3);
+      border: 1px solid rgba(100, 150, 255, 0.5);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.3s;
+    }
+    
+    .ev-button:hover {
+      background: rgba(100, 150, 255, 0.5);
+      border-color: rgba(100, 150, 255, 0.8);
+    }
+    
+    .ev-button.active {
+      background: rgba(76, 175, 80, 0.4);
+      border-color: rgba(76, 175, 80, 0.8);
+    }
+    
+    .ev-debug {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      font-size: 12px;
+      color: #888;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s;
+    }
+    
+    .ev-debug.show {
+      max-height: 500px;
+    }
+    
+    .ev-debug-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+  </style>
+
+  <div class="ev-card">
+    <!-- HEADER -->
+    <div class="ev-header">
+      <h1 class="ev-title">⚡ EV Control</h1>
+      <p class="ev-subtitle" id="mode-display">Caricamento...</p>
+    </div>
+
+    <!-- AUTO CON BATTERIA -->
+    <div class="ev-car-container">
+      <svg viewBox="0 0 300 150" style="width: 100%; max-width: 300px; height: auto;">
+        <!-- Corpo auto -->
+        <g id="car">
+          <rect x="30" y="80" width="240" height="50" rx="5" fill="none" stroke="#888" stroke-width="2"/>
+          <rect x="60" y="50" width="180" height="35" rx="3" fill="none" stroke="#888" stroke-width="2"/>
+          <circle cx="70" cy="130" r="8" fill="#555"/>
+          <circle cx="230" cy="130" r="8" fill="#555"/>
+          <rect x="80" y="55" width="40" height="25" fill="rgba(100,150,255,0.2)" stroke="#666" stroke-width="1"/>
+          <rect x="180" y="55" width="40" height="25" fill="rgba(100,150,255,0.2)" stroke="#666" stroke-width="1"/>
+        </g>
+        
+        <!-- Batteria background -->
+        <rect x="35" y="85" width="230" height="40" rx="3" fill="rgba(255,255,255,0.1)" stroke="#666" stroke-width="1"/>
+        
+        <!-- Batteria fill (dinamica) -->
+        {% set ev_soc = state_attr('sensor.ev_control_debug_info', 'ev_soc') or 0 %}
+        {% set fill_width = (ev_soc / 100) * 230 %}
+        {% set fill_color = 'rgb(76, 175, 80)' if ev_soc >= 80 else 'rgb(255, 193, 7)' if ev_soc >= 50 else 'rgb(244, 67, 54)' %}
+        <defs>
+          <clipPath id="batteryFill">
+            <rect x="35" y="85" width="230" height="40" rx="3"/>
+          </clipPath>
+        </defs>
+        <rect x="35" y="85" width="{{ fill_width }}" height="40" rx="3" fill="{{ fill_color }}" opacity="0.8" clip-path="url(#batteryFill)"/>
+        
+        <!-- Testo percentuale -->
+        <text x="150" y="110" text-anchor="middle" fill="#fff" font-size="18" font-weight="bold" style="text-shadow: 0 0 3px rgba(0,0,0,0.8);">
+          {{ (ev_soc | int) }}%
+        </text>
+      </svg>
+    </div>
+
+    <!-- STATISTICHE PRINCIPALI -->
+    <div class="ev-stats-grid">
+      <div class="ev-stat-box">
+        <div class="ev-stat-label">🔌 Corrente</div>
+        <div class="ev-stat-value">{{ state_attr('sensor.ev_control_debug_info', 'available_current') or 0 | int }}A</div>
+      </div>
+      
+      <div class="ev-stat-box">
+        <div class="ev-stat-label">☀️ PV Power</div>
+        <div class="ev-stat-value">{{ (state_attr('sensor.ev_control_debug_info', 'pv_power') or 0) | int(0) / 1000 | round(1) }}kW</div>
+      </div>
+      
+      <div class="ev-stat-box">
+        <div class="ev-stat-label">⚡ Surplus</div>
+        <div class="ev-stat-value">{{ (state_attr('sensor.ev_control_debug_info', 'surplus') or 0) | int(0) / 1000 | round(1) }}kW</div>
+      </div>
+      
+      <div class="ev-stat-box">
+        <div class="ev-stat-label">🏠 Consumo</div>
+        <div class="ev-stat-value">{{ (state_attr('sensor.ev_control_debug_info', 'house_consumption') or 0) | int(0) / 1000 | round(1) }}kW</div>
+      </div>
+      
+      <div class="ev-stat-box">
+        <div class="ev-stat-label">🔋 Batteria</div>
+        <div class="ev-stat-value">{{ state_attr('sensor.ev_control_debug_info', 'battery_soc') or 0 | int }}%</div>
+      </div>
+      
+      <div class="ev-stat-box">
+        <div class="ev-stat-label">⚙️ Tensione</div>
+        <div class="ev-stat-value">{{ (state_attr('sensor.ev_control_debug_info', 'voltage') or 230) | int }}V</div>
+      </div>
+    </div>
+
+    <!-- CONTROLLI -->
+    <div class="ev-controls">
+      <!-- Modalità -->
+      <div class="ev-control-row">
+        <div class="ev-control-label">📋 Modalità</div>
+        <div class="ev-control-content">
+          {% set current_mode = state_attr('sensor.ev_control_debug_info', 'mode') or 'eco' %}
+          <ha-select id="mode-select" style="width: 100%; max-width: 200px;">
+            <mwc-list-item value="eco" {% if current_mode == 'eco' %}selected{% endif %}>ECO (Solar)</mwc-list-item>
+            <mwc-list-item value="normal" {% if current_mode == 'normal' %}selected{% endif %}>NORMAL (Balanced)</mwc-list-item>
+            <mwc-list-item value="power" {% if current_mode == 'power' %}selected{% endif %}>POWER (Max)</mwc-list-item>
+            <mwc-list-item value="auto" {% if current_mode == 'auto' %}selected{% endif %}>AUTO (Schedule)</mwc-list-item>
+            <mwc-list-item value="auto-eco" {% if current_mode == 'auto-eco' %}selected{% endif %}>AUTO-ECO (Schedule+Solar)</mwc-list-item>
+          </ha-select>
+        </div>
+      </div>
+
+      <!-- On/Off -->
+      <div class="ev-control-row">
+        <div class="ev-control-label">🔄 Stato</div>
+        <div class="ev-control-content">
+          {% set is_enabled = state_attr('sensor.ev_control_debug_info', 'charging_enabled') %}
+          <button class="ev-button {% if is_enabled %}active{% endif %}" id="toggle-charging">
+            {% if is_enabled %}✓ CARICAMENTO ATTIVO{% else %}✗ CARICAMENTO PAUSED{% endif %}
+          </button>
+        </div>
+      </div>
+
+      <!-- Debug Toggle -->
+      <div class="ev-control-row">
+        <div class="ev-control-label">🔧 Debug</div>
+        <div class="ev-control-content">
+          <button class="ev-button" id="toggle-debug">Mostra Dettagli</button>
+        </div>
+      </div>
+
+      <!-- Debug Info (Nascosta di default) -->
+      <div class="ev-debug" id="debug-info">
+        {% set debug_msg = state_attr('sensor.ev_control_debug_info', 'debug_message') or 'N/A' %}
+        <div class="ev-debug-row">
+          <strong>Messaggio Debug:</strong>
+        </div>
+        <div style="padding: 8px 0; color: #ccc; font-size: 11px; font-family: monospace;">{{ debug_msg }}</div>
+        <div style="margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px;">
+          <div class="ev-debug-row">
+            <span>Potenza PV:</span>
+            <span>{{ (state_attr('sensor.ev_control_debug_info', 'pv_power') or 0) | int }}W</span>
+          </div>
+          <div class="ev-debug-row">
+            <span>Potenza Batteria:</span>
+            <span>{{ (state_attr('sensor.ev_control_debug_info', 'battery_power') or 0) | int }}W</span>
+          </div>
+          <div class="ev-debug-row">
+            <span>Potenza EV:</span>
+            <span>{{ (state_attr('sensor.ev_control_debug_info', 'ev_power') or 0) | int }}W</span>
+          </div>
+          <div class="ev-debug-row">
+            <span>Potenza Grid:</span>
+            <span>{{ (state_attr('sensor.ev_control_debug_info', 'grid_power') or 0) | int }}W</span>
+          </div>
+          <div class="ev-debug-row">
+            <span>EV SOC:</span>
+            <span>{{ (state_attr('sensor.ev_control_debug_info', 'ev_soc') or 0) | int }}%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Toggle Debug Info
+    document.getElementById('toggle-debug').addEventListener('click', function() {
+      const debug = document.getElementById('debug-info');
+      debug.classList.toggle('show');
+      this.textContent = debug.classList.contains('show') ? 'Nascondi Dettagli' : 'Mostra Dettagli';
+    });
+
+    // Mode Change
+    const modeSelect = document.getElementById('mode-select');
+    if (modeSelect) {
+      modeSelect.addEventListener('change', async (e) => {
+        const mode = e.target.value;
+        // Call service to change mode
+        try {
+          await hass.callService('select', 'select_option', {
+            entity_id: 'select.ev_control_mode',
+            option: mode
+          });
+        } catch (error) {
+          console.error('Error changing mode:', error);
+        }
+      });
+    }
+
+    // Toggle Charging
+    document.getElementById('toggle-charging').addEventListener('click', async function() {
+      try {
+        const current_state = document.querySelector('ha-select').value;
+        // Get current state from the charging_enabled attribute
+        const isEnabled = '{{ state_attr("sensor.ev_control_debug_info", "charging_enabled") }}' === 'True' || 
+                         '{{ state_attr("sensor.ev_control_debug_info", "charging_enabled") }}' === 'true';
+        
+        await hass.callService('switch', 'toggle', {
+          entity_id: 'switch.ev_control_charging_enabled'
+        });
+      } catch (error) {
+        console.error('Error toggling charging:', error);
+      }
+    });
+
+    // Update mode display
+    setInterval(() => {
+      const mode = '{{ state_attr("sensor.ev_control_debug_info", "mode") or "eco" | upper }}';
+      const available = '{{ state_attr("sensor.ev_control_debug_info", "available_current") or 0 }}';
+      document.getElementById('mode-display').textContent = `${mode} - ${available}A Disponibili`;
+    }, 1000);
+  </script>

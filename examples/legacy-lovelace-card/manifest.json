@@ -1,0 +1,11 @@
+{
+  "manifest_version": 1,
+  "domain": "evcontrol",
+  "name": "EV Control Card",
+  "codeowners": ["@gian1992"],
+  "config_flow": false,
+  "documentation": "https://github.com/gian1992/evcontrol",
+  "requirements": [],
+  "version": "1.0.0",
+  "homeassistant": "2024.1.0"
+}

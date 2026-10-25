@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Tooling state, not part of the project
+.claude/
+.claude-flow/
+.version-check
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build/session reports kept locally, not published.
+# These document how the integration was built rather than how it is used;
+# README.md, CHANGELOG.md, TECHNICAL.md and QUICKSTART.md are the published docs.
+AUTO_MODES_QUICKSTART.md
+BEFORE_AFTER_COMPARISON.md
+BUG_FIXES_REPORT.md
+BUG_REPORT.md
+BUILD_SUMMARY.md
+CARD_INSTALLATION_GUIDE.md
+CHANGELOG_AUTO_MODES.md
+COMPLETION_REPORT.md
+DELIVERY.md
+IMPLEMENTATION_SUMMARY.md
+INDEX.md
+OPTIONS_FLOW_GUIDE.md
+TEST_REPORT.md
+VISUAL_GUIDE.md
