@@ -1,12 +1,14 @@
 # EV Control — Home Assistant Custom Integration
 
+***English** · [Italiano](README.it.md)*
+
 Solar-first EV charging for Home Assistant. It decides, every few seconds, how many
 amps the car should draw — from the panels, from the house battery, from the grid, or
 not at all — and it explains the decision in plain language instead of leaving you to
 reverse-engineer it from a number.
 
-> The configuration UI is in Italian. The code, this README and the service API are in
-> English.
+> The configuration UI is currently Italian only. The code, this README and the service
+> API are in English. An Italian translation of this page is at [README.it.md](README.it.md).
 
 ## What it does
 
