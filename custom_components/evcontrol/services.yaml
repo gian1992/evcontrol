@@ -1,10 +1,11 @@
+# Action names, descriptions and field labels are not here: Home Assistant reads
+# them from strings.json under "services", so that they can be translated. This file
+# describes the shape of each action -- its fields, their selectors and whether they
+# are required.
+
 set_mode:
-  name: Set Charging Mode
-  description: Set the EV charging mode (eco, normal, power, auto, auto-eco).
   fields:
     mode:
-      name: Mode
-      description: Charging mode to activate.
       required: true
       example: "auto"
       selector:
@@ -17,20 +18,12 @@ set_mode:
             - "auto-eco"
 
 start_charging:
-  name: Start Charging
-  description: Enable EV charging (sets charging_enabled to true).
 
 stop_charging:
-  name: Stop Charging
-  description: Disable EV charging and send stop command to charger.
 
 set_speed:
-  name: Set Base Charging Speed
-  description: Set the base charging current used in Normal mode.
   fields:
     speed:
-      name: Current (A)
-      description: Charging current in Amperes.
       required: true
       example: 16
       selector:
@@ -42,17 +35,8 @@ set_speed:
           mode: slider
 
 set_schedule:
-  name: Set Charging Deadline
-  description: >
-    Set the time by which the car must be charged, for one or more days of the
-    week. This is the same weekly schedule the integration options edit, and it
-    is what AUTO and AUTO-ECO plan backwards from.
   fields:
     day:
-      name: Day
-      description: >
-        A weekday (monday … sunday), "today", or one of the groups
-        "all", "weekdays", "weekend". A list of days is also accepted.
       required: true
       example: "weekdays"
       selector:
@@ -72,24 +56,14 @@ set_schedule:
             - "saturday"
             - "sunday"
     time:
-      name: Deadline (HH:MM)
-      description: Time by which charging should be finished.
       required: true
       example: "07:30"
       selector:
         time:
 
 clear_schedule:
-  name: Clear Charging Deadline
-  description: >
-    Remove the charging deadline from one or more days. Days without a deadline
-    charge on solar surplus only, with nothing to catch up to.
   fields:
     day:
-      name: Day
-      description: >
-        A weekday (monday … sunday), "today", or one of the groups
-        "all", "weekdays", "weekend". A list of days is also accepted.
       required: true
       example: "saturday"
       selector:
@@ -110,43 +84,26 @@ clear_schedule:
             - "sunday"
 
 set_start_time:
-  name: Set AUTO Start Time
-  description: >
-    Deprecated and inert. There is no configurable start time: in AUTO the planner
-    derives it from the deadline, the charge still needed and the solar forecast.
-    Move the deadline with set_schedule instead.
   fields:
     time:
-      name: Time (HH:MM)
-      description: Ignored.
       required: false
       example: "06:00"
       selector:
         time:
     day:
-      name: Day
-      description: Ignored.
       required: false
       example: "monday"
       selector:
         text:
 
 set_end_time:
-  name: Set AUTO End/Target Time
-  description: >
-    Deprecated alias of set_schedule, kept so existing automations and the bundled
-    Lovelace card keep working. Defaults to today when no day is given.
   fields:
     time:
-      name: Deadline (HH:MM)
-      description: Time by which charging should be finished.
       required: true
       example: "07:30"
       selector:
         time:
     day:
-      name: Day
-      description: Weekday (monday … sunday), "today", or a group. Defaults to today.
       required: false
       default: "today"
       example: "monday"

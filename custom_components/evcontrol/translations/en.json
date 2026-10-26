@@ -251,5 +251,87 @@
         }
       }
     }
+  },
+  "services": {
+    "set_mode": {
+      "name": "Set charging mode",
+      "description": "Set the EV charging mode.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "Charging mode to activate."
+        }
+      }
+    },
+    "start_charging": {
+      "name": "Start charging",
+      "description": "Enable EV charging."
+    },
+    "stop_charging": {
+      "name": "Stop charging",
+      "description": "Disable EV charging and send the stop command to the wallbox."
+    },
+    "set_speed": {
+      "name": "Set base charging speed",
+      "description": "Set the base charging current used in Normal mode.",
+      "fields": {
+        "speed": {
+          "name": "Current (A)",
+          "description": "Charging current in amperes."
+        }
+      }
+    },
+    "set_schedule": {
+      "name": "Set charging deadline",
+      "description": "Set the time by which the car must be charged, for one or more days of the week. This is the same weekly schedule the integration options edit, and it is what AUTO and AUTO-ECO plan backwards from.",
+      "fields": {
+        "day": {
+          "name": "Day",
+          "description": "A weekday (monday … sunday), \"today\", or one of the groups \"all\", \"weekdays\", \"weekend\". A list of days is also accepted."
+        },
+        "time": {
+          "name": "Deadline (HH:MM)",
+          "description": "Time by which charging should be finished."
+        }
+      }
+    },
+    "clear_schedule": {
+      "name": "Clear charging deadline",
+      "description": "Remove the charging deadline from one or more days. Days without a deadline charge on solar surplus only, with nothing to catch up to.",
+      "fields": {
+        "day": {
+          "name": "Day",
+          "description": "A weekday (monday … sunday), \"today\", or one of the groups \"all\", \"weekdays\", \"weekend\". A list of days is also accepted."
+        }
+      }
+    },
+    "set_start_time": {
+      "name": "Set AUTO start time",
+      "description": "Deprecated and inert. There is no configurable start time: in AUTO the planner derives it from the deadline, the charge still needed and the solar forecast. Move the deadline with \"Set charging deadline\" instead.",
+      "fields": {
+        "time": {
+          "name": "Time (HH:MM)",
+          "description": "Ignored."
+        },
+        "day": {
+          "name": "Day",
+          "description": "Ignored."
+        }
+      }
+    },
+    "set_end_time": {
+      "name": "Set AUTO end/target time",
+      "description": "Deprecated alias of \"Set charging deadline\", kept so existing automations and the bundled Lovelace card keep working. Defaults to today when no day is given.",
+      "fields": {
+        "time": {
+          "name": "Deadline (HH:MM)",
+          "description": "Time by which charging should be finished."
+        },
+        "day": {
+          "name": "Day",
+          "description": "Weekday (monday … sunday), \"today\", or a group. Defaults to today."
+        }
+      }
+    }
   }
 }

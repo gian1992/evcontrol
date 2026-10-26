@@ -251,5 +251,87 @@
         }
       }
     }
+  },
+  "services": {
+    "set_mode": {
+      "name": "Imposta modalità di ricarica",
+      "description": "Imposta la modalità di ricarica dell'auto.",
+      "fields": {
+        "mode": {
+          "name": "Modalità",
+          "description": "Modalità di ricarica da attivare."
+        }
+      }
+    },
+    "start_charging": {
+      "name": "Avvia ricarica",
+      "description": "Abilita la ricarica dell'auto."
+    },
+    "stop_charging": {
+      "name": "Ferma ricarica",
+      "description": "Disabilita la ricarica e invia il comando di arresto alla colonnina."
+    },
+    "set_speed": {
+      "name": "Imposta velocità di ricarica di base",
+      "description": "Imposta la corrente di base usata nella modalità Normal.",
+      "fields": {
+        "speed": {
+          "name": "Corrente (A)",
+          "description": "Corrente di ricarica in ampere."
+        }
+      }
+    },
+    "set_schedule": {
+      "name": "Imposta scadenza di ricarica",
+      "description": "Imposta l'ora entro cui l'auto deve essere carica, per uno o più giorni della settimana. È la stessa pianificazione che si modifica dalle opzioni dell'integrazione, ed è quella da cui AUTO e AUTO-ECO pianificano all'indietro.",
+      "fields": {
+        "day": {
+          "name": "Giorno",
+          "description": "Un giorno della settimana (monday … sunday), \"today\", oppure uno dei gruppi \"all\", \"weekdays\", \"weekend\". È accettata anche una lista di giorni."
+        },
+        "time": {
+          "name": "Scadenza (HH:MM)",
+          "description": "Ora entro cui la ricarica deve essere terminata."
+        }
+      }
+    },
+    "clear_schedule": {
+      "name": "Cancella scadenza di ricarica",
+      "description": "Rimuove la scadenza da uno o più giorni. I giorni senza scadenza caricano solo con il surplus solare, senza niente da recuperare.",
+      "fields": {
+        "day": {
+          "name": "Giorno",
+          "description": "Un giorno della settimana (monday … sunday), \"today\", oppure uno dei gruppi \"all\", \"weekdays\", \"weekend\". È accettata anche una lista di giorni."
+        }
+      }
+    },
+    "set_start_time": {
+      "name": "Imposta orario di partenza AUTO",
+      "description": "Deprecato e inerte. Non esiste un orario di partenza configurabile: in AUTO il pianificatore lo ricava dalla scadenza, dalla carica ancora necessaria e dalla previsione solare. Sposta invece la scadenza con «Imposta scadenza di ricarica».",
+      "fields": {
+        "time": {
+          "name": "Ora (HH:MM)",
+          "description": "Ignorato."
+        },
+        "day": {
+          "name": "Giorno",
+          "description": "Ignorato."
+        }
+      }
+    },
+    "set_end_time": {
+      "name": "Imposta orario obiettivo AUTO",
+      "description": "Alias deprecato di «Imposta scadenza di ricarica», mantenuto perché le automazioni esistenti e la card Lovelace inclusa continuino a funzionare. Senza giorno vale per oggi.",
+      "fields": {
+        "time": {
+          "name": "Scadenza (HH:MM)",
+          "description": "Ora entro cui la ricarica deve essere terminata."
+        },
+        "day": {
+          "name": "Giorno",
+          "description": "Giorno della settimana (monday … sunday), \"today\", o un gruppo. Senza valore vale per oggi."
+        }
+      }
+    }
   }
 }
