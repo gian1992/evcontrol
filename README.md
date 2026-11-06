@@ -165,6 +165,20 @@ data:
 The day's target percentage is left in place: clearing a deadline is usually
 temporary, and having the percentage come back with it beats finding it reset.
 
+### `evcontrol.unblock_now`
+
+Drops the two waits the planner imposes on itself — the minimum pause after a stop,
+and the start confirmation — so a start can happen on the next cycle.
+
+It does not start charging, raise the current or change the mode. With no surplus
+and no deadline pressure the planner still declines, and still says why: what this
+removes is the waiting, not the judgement. The daily stop budget, the home-battery
+floor and the sunset guard are limits rather than waits, and are left alone.
+
+Also available as the **Unblock Now** button, and as the card's SBLOCCA control,
+which lights up only while one of the two waits is actually running
+(`smart_unblockable` on the status sensor).
+
 ### Others
 
 | Service | Fields |
@@ -173,6 +187,7 @@ temporary, and having the percentage come back with it beats finding it reset.
 | `evcontrol.start_charging` | — |
 | `evcontrol.stop_charging` | — |
 | `evcontrol.set_speed` | `speed`: base current in A for Normal mode |
+| `evcontrol.unblock_now` | — |
 
 `evcontrol.set_end_time` is a deprecated alias of `set_schedule`, kept so existing
 automations keep working. `evcontrol.set_start_time` is inert: there is no configurable

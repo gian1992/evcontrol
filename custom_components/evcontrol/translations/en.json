@@ -327,6 +327,10 @@
         }
       }
     },
+    "unblock_now": {
+      "name": "Unblock now",
+      "description": "Drop the waiting timers the planner imposes on itself: the minimum pause after a stop, and the start confirmation. It does not start charging, raise the current or change the mode — with no surplus and no deadline pressure the planner will still decline, and still say why. The daily stop budget, the home-battery floor and the sunset guard are not affected."
+    },
     "clear_schedule": {
       "name": "Clear charging deadline",
       "description": "Remove the charging deadline from one or more days. Days without a deadline charge on solar surplus only, with nothing to catch up to.",
@@ -363,6 +367,13 @@
           "name": "Day",
           "description": "Weekday (monday … sunday), \"today\", or a group. Defaults to today."
         }
+      }
+    }
+  },
+  "entity": {
+    "button": {
+      "unblock_now": {
+        "name": "Unblock Now"
       }
     }
   }

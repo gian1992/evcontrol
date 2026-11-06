@@ -28,6 +28,7 @@ async def async_setup_entry(
     buttons = [
         EVControlStartButton(coordinator, config_entry),
         EVControlStopButton(coordinator, config_entry),
+        EVControlUnblockButton(coordinator, config_entry),
     ]
 
     async_add_entities(buttons)
@@ -91,3 +92,27 @@ class EVControlStopButton(EVControlBaseButton):
         """Press the button."""
         await self.coordinator.stop_charging()
         _LOGGER.info("Manual stop charging button pressed")
+
+
+class EVControlUnblockButton(EVControlBaseButton):
+    """Button to drop the planner's waiting timers.
+
+    Not a start button: see `EVControlCoordinator.unblock_now`. This removes the
+    minimum-off pause and the start confirmation, then lets the planner decide on
+    the next cycle as it normally would.
+    """
+
+    _attr_unique_id_suffix = "unblock_now"
+    _attr_name = "Unblock Now"
+    _attr_icon = "mdi:timer-off-outline"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def unique_id(self) -> str:
+        """Return unique ID."""
+        return f"{self._attr_unique_id}_{self._attr_unique_id_suffix}"
+
+    async def async_press(self) -> None:
+        """Press the button."""
+        self.coordinator.unblock_now()
+        await self.coordinator.async_request_refresh()

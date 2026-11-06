@@ -1,5 +1,30 @@
 # EV Control - Changelog
 
+## Version 0.6.0
+
+### Added
+- **`evcontrol.unblock_now`** and a matching **Unblock Now** button. The planner
+  imposes two waits on itself that exist to protect the contactor rather than to
+  answer any physical limit: the minimum pause after a stop
+  (`smart_min_off_min`, the source of "Non riparto prima delle 23:30") and the
+  start confirmation dwell (`smart_start_dwell_s`). This clears both.
+
+  It deliberately does not start charging, raise the current or change the mode.
+  With no surplus and no deadline pressure the planner still declines, and still
+  says why — what is removed is the waiting, not the judgement. The daily stop
+  budget, the home-battery floor and the sunset guard are untouched, because
+  those are limits rather than waits.
+- **`smart_unblockable` attribute** on the charging status sensor: whether either
+  wait is actually running, so a card can show the control as inert instead of
+  offering a press that does nothing.
+
+### Notes
+- `smart_solar_protection` is left in place but is inert whenever the smart
+  planner is enabled: it only ever reached `apply_eco_timer` and
+  `apply_auto_timer`, which run under `not use_smart`. It still works for setups
+  that turn the planner off. The dashboard control for it has been removed from
+  the Oikos card, where it had been dead on three separate counts.
+
 ## Version 0.5.0
 
 ### Added

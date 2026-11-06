@@ -103,6 +103,8 @@ set_target_soc:
           unit_of_measurement: "%"
           mode: slider
 
+unblock_now:
+
 clear_schedule:
   fields:
     day:

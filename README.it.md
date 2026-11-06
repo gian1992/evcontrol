@@ -168,6 +168,21 @@ data:
 La percentuale obiettivo del giorno resta: cancellare una scadenza di solito è una
 cosa temporanea, ed è meno sorprendente ritrovarsela al suo posto che azzerata.
 
+### `evcontrol.unblock_now`
+
+Azzera le due attese che il pianificatore si impone da solo — la pausa minima dopo
+uno stop e la conferma di avvio — così la partenza può avvenire al ciclo successivo.
+
+Non fa partire la ricarica, non alza la corrente e non cambia modalità. Senza
+surplus e senza scadenza vicina il pianificatore resta fermo, dicendo perché: quello
+che viene tolto è l'attesa, non il giudizio. Il budget di stop giornaliero, il minimo
+della batteria di casa e la protezione del tramonto sono limiti, non attese, e
+restano al loro posto.
+
+Disponibile anche come pulsante **Sblocca adesso** e come comando SBLOCCA della card,
+che si accende solo mentre una delle due attese è davvero in corso (attributo
+`smart_unblockable` sul sensore di stato).
+
 ### Gli altri
 
 | Servizio | Campi |
@@ -176,6 +191,7 @@ cosa temporanea, ed è meno sorprendente ritrovarsela al suo posto che azzerata.
 | `evcontrol.start_charging` | — |
 | `evcontrol.stop_charging` | — |
 | `evcontrol.set_speed` | `speed`: corrente di base in A per la modalità Normal |
+| `evcontrol.unblock_now` | — |
 
 `evcontrol.set_end_time` è un alias deprecato di `set_schedule`, mantenuto perché le
 automazioni esistenti continuino a funzionare. `evcontrol.set_start_time` è inerte: non

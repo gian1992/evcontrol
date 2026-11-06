@@ -941,6 +941,17 @@ class EVControlCoordinator(DataUpdateCoordinator):
                 "smart_stops_today": smart_decision.stops_today if smart_decision else None,
                 "smart_dwell_left_s": smart_decision.dwell_left_s if smart_decision else None,
                 "smart_slack": smart_decision.slack if smart_decision else None,
+                # Whether the unblock button has anything to do: a pause still
+                # running, or a start confirmation mid-count. Lets a card show the
+                # control as inert rather than offering a no-op.
+                "smart_unblockable": bool(
+                    self.smart_state.last_stop is not None
+                    or 0 < self.smart_state.start_dwell_s < int(
+                        self.config.get("smart_start_dwell_s", 180)
+                    )
+                    or self.eco_timer_active
+                    or self.auto_timer_active
+                ),
                 "smart_sun": smart_decision.sun_phase if smart_decision else None,
                 "smart_sun_reason": smart_decision.sun_reason if smart_decision else None,
                 "smart_pv_slope_w_min": smart_decision.pv_slope_w_min if smart_decision else None,
@@ -1276,6 +1287,61 @@ class EVControlCoordinator(DataUpdateCoordinator):
         if self.data is not None:
             self.data["target_soc_schedule"] = dict(self.target_soc_schedule)
         _LOGGER.info("Target SOC updated: %s", self.target_soc_schedule)
+
+    def unblock_now(self) -> list:
+        """Drop the planner's self-imposed waits so a start can happen this cycle.
+
+        Two timers stand between "conditions are fine" and "charging", and both
+        exist to protect the contactor rather than to answer any physical limit:
+
+        - the minimum-off pause after a stop (`smart_min_off_min`), which is what
+          produces "Non riparto prima delle 23:30";
+        - the start confirmation dwell (`smart_start_dwell_s`), which waits to see
+          whether a surplus is real before closing the contactor.
+
+        This clears both. It deliberately does *not* start charging, raise the
+        current, or touch the mode: if there is no surplus and no deadline
+        pressure, the planner will simply decide not to start, and say so. What it
+        removes is the waiting, not the judgement.
+
+        Left alone on purpose, because they are not waits:
+        - the daily stop budget (`smart_max_stops_per_day`),
+        - the home-battery floor (`solar_min_soc`),
+        - the sunset guard.
+
+        Returns the list of things actually cleared, for the log and the caller.
+        """
+        cleared = []
+
+        if self.smart_state.last_stop is not None:
+            self.smart_state.last_stop = None
+            cleared.append("pausa minima dopo lo stop")
+
+        # Setting the accumulator to the target means the next cycle's increment
+        # takes it past, so the start happens then rather than after another full
+        # dwell. Jumping straight to "charging" here would bypass the surplus
+        # check too, which is the one judgement that has to stay.
+        dwell_target = int(self.config.get("smart_start_dwell_s", 180))
+        if self.smart_state.start_dwell_s < dwell_target:
+            self.smart_state.start_dwell_s = float(dwell_target)
+            cleared.append("conferma di avvio")
+
+        # The legacy timers only run with the smart planner switched off, but a
+        # button called "unblock now" that quietly ignored them there would be
+        # lying about what it does.
+        if self.eco_timer_active or self.eco_timer_seconds:
+            self.eco_timer_active = False
+            self.eco_timer_seconds = 0
+            cleared.append("timer ECO")
+        if self.auto_timer_active:
+            self.auto_timer_active = False
+            cleared.append("timer AUTO")
+
+        if cleared:
+            _LOGGER.info("Unblock requested, cleared: %s", ", ".join(cleared))
+        else:
+            _LOGGER.info("Unblock requested, but nothing was holding a start back")
+        return cleared
 
     def set_smart_solar_protection(self, enabled: bool) -> None:
         """Enable or disable smart solar protection (anti-cycle for BYD)."""

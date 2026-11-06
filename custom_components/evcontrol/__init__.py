@@ -233,6 +233,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await _async_write_schedule({day: "" for day in days})
         _LOGGER.info("Schedule cleared for %s", ", ".join(days))
 
+    async def handle_unblock_now(call: ServiceCall) -> None:
+        """Drop the planner's waiting timers so a start can happen now.
+
+        Not a start command: it removes the minimum-off pause and the start
+        confirmation, then leaves the decision where it was. With no surplus and
+        no deadline pressure the planner will still decline, and still say why.
+        """
+        cleared = coordinator.unblock_now()
+        await coordinator.async_request_refresh()
+        if not cleared:
+            _LOGGER.info("evcontrol.unblock_now: nothing was holding a start back")
+
     async def handle_set_start_time(call: ServiceCall) -> None:
         """Handle set_start_time service.
 
@@ -264,6 +276,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "set_speed", handle_set_speed)
     hass.services.async_register(DOMAIN, "set_schedule", handle_set_schedule)
     hass.services.async_register(DOMAIN, "set_target_soc", handle_set_target_soc)
+    hass.services.async_register(DOMAIN, "unblock_now", handle_unblock_now)
     hass.services.async_register(DOMAIN, "clear_schedule", handle_clear_schedule)
     hass.services.async_register(DOMAIN, "set_start_time", handle_set_start_time)
     hass.services.async_register(DOMAIN, "set_end_time", handle_set_end_time)

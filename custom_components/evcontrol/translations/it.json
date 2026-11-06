@@ -327,6 +327,10 @@
         }
       }
     },
+    "unblock_now": {
+      "name": "Sblocca adesso",
+      "description": "Azzera i tempi di attesa che il pianificatore si impone da solo: la pausa minima dopo uno stop e la conferma di avvio. Non fa partire la ricarica, non alza la corrente e non cambia modalità — senza surplus e senza scadenza vicina il pianificatore resterà fermo, dicendo perché. Non tocca il budget di stop giornaliero, il minimo della batteria di casa e la protezione del tramonto."
+    },
     "clear_schedule": {
       "name": "Cancella scadenza di ricarica",
       "description": "Rimuove la scadenza da uno o più giorni. I giorni senza scadenza caricano solo con il surplus solare, senza niente da recuperare.",
@@ -363,6 +367,13 @@
           "name": "Giorno",
           "description": "Giorno della settimana (monday … sunday), \"today\", o un gruppo. Senza valore vale per oggi."
         }
+      }
+    }
+  },
+  "entity": {
+    "button": {
+      "unblock_now": {
+        "name": "Sblocca adesso"
       }
     }
   }
