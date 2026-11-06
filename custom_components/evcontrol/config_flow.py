@@ -156,20 +156,25 @@ def _ev_vehicle_schema(d: dict) -> dict:
 
 
 def _schedule_schema(d: dict) -> dict:
-    """Return schedule fields with current defaults.
+    """Return schedule fields with current defaults: a time and a target SOC per day.
 
-    Uses default="" so if the field is absent from user_input (X button clears it),
-    voluptuous falls back to "" instead of restoring the old saved value. The
-    current saved value is passed as suggested_value so the UI pre-selects it
-    without it becoming the voluptuous fallback.
+    The time uses default="" so if the field is absent from user_input (X button
+    clears it), voluptuous falls back to "" instead of restoring the old saved
+    value. The current saved value is passed as suggested_value so the UI
+    pre-selects it without it becoming the voluptuous fallback.
+
+    The percentage is a plain required box defaulting to 100, because unlike the
+    time it has no meaningful empty state: a day either charges to 100% or to
+    something less, and an unset percentage means the former.
     """
     options = [{"value": t, "label": t if t else "— nessuno —"} for t in _TIME_OPTIONS]
-    return {
-        vol.Optional(
+    schema: dict = {}
+    for day in _DAYS:
+        schema[vol.Optional(
             f"target_schedule_{day}",
             default="",
             description={"suggested_value": d.get(f"target_schedule_{day}") or ""},
-        ): SelectSelector(SelectSelectorConfig(
+        )] = SelectSelector(SelectSelectorConfig(
             options=options,
             mode=SelectSelectorMode.DROPDOWN,
             # The dropdown offers quarter-hours, but evcontrol.set_schedule (and so
@@ -178,16 +183,27 @@ def _schedule_schema(d: dict) -> dict:
             # day as empty and quietly wipe it on the next save.
             custom_value=True,
         ))
-        for day in _DAYS
-    }
+        _box(schema, d, f"target_soc_{day}", 100, 5, 100, 5, "%")
+    return schema
 
 
 def _normalise_schedule(user_input: dict) -> dict:
-    """Ensure every day key is present and normalised to '' when empty/None."""
-    return {
-        f"target_schedule_{day}": user_input.get(f"target_schedule_{day}") or ""
-        for day in _DAYS
-    }
+    """Ensure every day key is present and normalised.
+
+    Times become '' when empty or None; percentages become a whole number, 100
+    when the field is missing -- which is what a schedule saved before target SOC
+    existed looks like.
+    """
+    out: dict = {}
+    for day in _DAYS:
+        out[f"target_schedule_{day}"] = user_input.get(f"target_schedule_{day}") or ""
+        raw = user_input.get(f"target_soc_{day}")
+        try:
+            soc = round(float(raw))
+        except (TypeError, ValueError):
+            soc = 100
+        out[f"target_soc_{day}"] = min(100, max(5, soc))
+    return out
 
 
 def _auto_schema(d: dict) -> dict:

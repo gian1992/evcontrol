@@ -1,5 +1,39 @@
 # EV Control - Changelog
 
+## Version 0.5.0
+
+### Added
+- **A target charge per weekday.** Each deadline now carries the percentage the car
+  has to reach by that time, not just the time. Settable from the options
+  (*Orari di ricarica*), from `evcontrol.set_schedule` via the new optional `soc`
+  field, and from the new `evcontrol.set_target_soc` action. Defaults to 100%, so
+  nothing changes for a schedule that does not use it.
+- **`evcontrol.set_target_soc`** — change the percentage for one or more days
+  without touching their times. Takes the same `day` values as `set_schedule`.
+- **`target_soc_schedule` attribute** on the charging status sensor, plus
+  `target_soc` on the next-target sensor. Deliberately a separate attribute from
+  `target_schedule`: cards written against 0.4.x parse every value of that dict as
+  a time, so widening it would have blanked their rows.
+
+### Changed
+- The planner now works backwards from the target rather than from 100%. Asking for
+  80% needs materially less energy — and skips the CC/CV taper overhead that only
+  applies near a full charge — so the latest safe moment to fall back to the grid
+  moves hours later and the sun gets a longer run at the job.
+- Status and outlook texts say what the target was. "L'auto è all'80%, l'obiettivo
+  di oggi era 80%" rather than reporting a car that is not full as unfinished.
+- `charge_hours_at_reference`, `hours_to_full_now` and `energia_mancante_kwh` are
+  measured to the target instead of to 100%.
+
+### Fixed
+- The 30-minute grace window after a missed deadline no longer fires when the
+  deadline was actually met. Without this, a schedule asking for 80% on a car
+  already at 80% would pull grid power at full tariff to finish a charge that was
+  already finished.
+- `clear_schedule` leaves the day's percentage in place. Clearing a deadline is
+  usually temporary, and having the percentage come back with it is less surprising
+  than finding it reset to 100% the following week.
+
 ## Version 0.4.0
 
 ### Added

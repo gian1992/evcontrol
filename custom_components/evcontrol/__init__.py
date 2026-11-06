@@ -82,6 +82,27 @@ def _normalise_time(raw) -> str:
     return f"{hour:02d}:{minute:02d}"
 
 
+def _normalise_soc(raw) -> int:
+    """Return the target SOC as a whole percent, or raise if it is not one.
+
+    The floor is 5 rather than 0: a 0% deadline is not a deadline, it is a
+    cleared one, and `clear_schedule` is how you say that.
+    """
+    if raw is None or raw == "":
+        raise ServiceValidationError("The 'soc' field is required")
+    try:
+        value = round(float(raw))
+    except (TypeError, ValueError):
+        raise ServiceValidationError(
+            f"Invalid soc '{raw}'. Expected a percentage between 5 and 100"
+        )
+    if not 5 <= value <= 100:
+        raise ServiceValidationError(
+            f"Invalid soc '{raw}'. Expected a percentage between 5 and 100"
+        )
+    return value
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Register the Lovelace card as a static resource (runs once at startup)."""
     www_path = Path(__file__).parent / "www" / "evcontrol-card.js"
@@ -140,18 +161,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_request_refresh()
         _LOGGER.info(f"Charging speed set to: {speed}A")
     
-    async def _async_write_schedule(updates: dict) -> None:
+    async def _async_write_schedule(updates: dict, soc_updates: dict | None = None) -> None:
         """Persist schedule changes to the config entry, then apply them in place.
 
         Writing the options is what makes the change survive a restart and show up in
         the options flow. The in-place apply is what keeps the running session intact:
         see `EVControlCoordinator.apply_target_schedule`. The two have to agree, hence
         one path for both.
+
+        Times and percentages travel together because setting both from the card is
+        one gesture: two separate writes would mean two config-entry updates, two
+        skip-reload tokens, and a window in which the new time is live against the
+        old percentage.
         """
-        options = {
-            **entry.options,
-            **{f"target_schedule_{day}": value or "" for day, value in updates.items()},
-        }
+        options = {**entry.options}
+        options.update(
+            {f"target_schedule_{day}": value or "" for day, value in updates.items()}
+        )
+        if soc_updates:
+            options.update(
+                {f"target_soc_{day}": value for day, value in soc_updates.items()}
+            )
         # The update listener below reloads the entry on any config-entry change. This
         # one does not need a reload -- the coordinator is patched directly -- so the
         # listener is told to let exactly this update through untouched.
@@ -160,18 +190,45 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             # Nothing changed, so no listener call is coming to consume the token.
             # Leaving it queued would swallow the next real options-flow reload.
             skip_reload["pending"] -= 1
-        coordinator.apply_target_schedule(updates)
+        if updates:
+            coordinator.apply_target_schedule(updates)
+        if soc_updates:
+            coordinator.apply_target_soc(soc_updates)
         await coordinator.async_request_refresh()
 
     async def handle_set_schedule(call: ServiceCall) -> None:
-        """Set the charging deadline for one or more days."""
+        """Set the charging deadline, and optionally its target SOC, for one or more days."""
         days = _resolve_days(call.data.get("day"))
         time_str = _normalise_time(call.data.get("time"))
-        await _async_write_schedule({day: time_str for day in days})
-        _LOGGER.info("Schedule set to %s for %s", time_str, ", ".join(days))
+        # Omitting `soc` leaves whatever percentage the day already had, so an
+        # automation that only moves the time cannot silently reset it to 100.
+        raw_soc = call.data.get("soc")
+        soc_updates = None
+        if raw_soc is not None and raw_soc != "":
+            soc = _normalise_soc(raw_soc)
+            soc_updates = {day: soc for day in days}
+        await _async_write_schedule({day: time_str for day in days}, soc_updates)
+        _LOGGER.info(
+            "Schedule set to %s%s for %s",
+            time_str,
+            f" at {soc_updates[days[0]]}%" if soc_updates else "",
+            ", ".join(days),
+        )
+
+    async def handle_set_target_soc(call: ServiceCall) -> None:
+        """Set the target SOC for one or more days, leaving their times alone."""
+        days = _resolve_days(call.data.get("day"))
+        soc = _normalise_soc(call.data.get("soc"))
+        await _async_write_schedule({}, {day: soc for day in days})
+        _LOGGER.info("Target SOC set to %s%% for %s", soc, ", ".join(days))
 
     async def handle_clear_schedule(call: ServiceCall) -> None:
-        """Remove the charging deadline from one or more days."""
+        """Remove the charging deadline from one or more days.
+
+        The day's target SOC is deliberately left in place: clearing a deadline is
+        usually temporary, and having the percentage come back with it is less
+        surprising than finding it reset to 100 next week.
+        """
         days = _resolve_days(call.data.get("day"))
         await _async_write_schedule({day: "" for day in days})
         _LOGGER.info("Schedule cleared for %s", ", ".join(days))
@@ -206,6 +263,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "stop_charging", handle_stop_charging)
     hass.services.async_register(DOMAIN, "set_speed", handle_set_speed)
     hass.services.async_register(DOMAIN, "set_schedule", handle_set_schedule)
+    hass.services.async_register(DOMAIN, "set_target_soc", handle_set_target_soc)
     hass.services.async_register(DOMAIN, "clear_schedule", handle_clear_schedule)
     hass.services.async_register(DOMAIN, "set_start_time", handle_set_start_time)
     hass.services.async_register(DOMAIN, "set_end_time", handle_set_end_time)

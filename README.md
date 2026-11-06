@@ -7,8 +7,9 @@ amps the car should draw — from the panels, from the house battery, from the g
 not at all — and it explains the decision in plain language instead of leaving you to
 reverse-engineer it from a number.
 
-> The configuration UI is currently Italian only. The code, this README and the service
-> API are in English. An Italian translation of this page is at [README.it.md](README.it.md).
+> The configuration UI, the code, this README and the service API are in English,
+> with an Italian translation shipped alongside. An Italian translation of this page
+> is at [README.it.md](README.it.md).
 
 ## What it does
 
@@ -47,8 +48,16 @@ more careful than a surplus threshold:
 
 ### Weekly deadlines
 
-Each weekday can carry one target time — the moment the car has to be ready by. Days
-without one simply charge on surplus, with nothing to catch up to.
+Each weekday can carry one deadline: the moment the car has to be ready by, and how
+full it has to be by then. Days without one simply charge on surplus, with nothing to
+catch up to.
+
+The percentage defaults to 100% and is what the planner works backwards from. Asking
+for 80% needs materially less energy — and skips the CC/CV taper overhead that only
+applies near a full charge — so the latest safe moment to fall back to the grid moves
+hours later, and the sun gets a longer run at the job. Once the car reaches the
+target the deadline is satisfied: it stops counting as urgent, and surplus charging
+carries on past it for free rather than stopping there.
 
 The schedule is editable three ways, all writing the same values:
 
@@ -102,7 +111,7 @@ menu, with edits held until you choose to save them.
 | Entity | What it tells you |
 |---|---|
 | `sensor.ev_control_charging_status` | **The one to put on a dashboard.** State is what it is doing; attributes carry why, the plan, and the full raw data the cards read. |
-| `sensor.ev_control_charging_outlook` | Will the car be ready in time, and the latest grid fallback moment. |
+| `sensor.ev_control_charging_outlook` | Will the car reach its target in time, and the latest grid fallback moment. |
 | `sensor.ev_control_surplus_power` | Solar surplus (W) |
 | `sensor.ev_control_available_charging_current` | The current being asked of the charger (A) |
 
@@ -130,6 +139,19 @@ action: evcontrol.set_schedule
 data:
   day: weekdays        # a weekday, a list, "today", or "all" / "weekdays" / "weekend"
   time: "07:30"
+  soc: 80              # optional; omitted, the day keeps the percentage it had
+```
+
+### `evcontrol.set_target_soc`
+
+Change how full the car has to be, without touching the times. Same `day` values as
+`set_schedule`.
+
+```yaml
+action: evcontrol.set_target_soc
+data:
+  day: saturday
+  soc: 80
 ```
 
 ### `evcontrol.clear_schedule`
@@ -139,6 +161,9 @@ action: evcontrol.clear_schedule
 data:
   day: saturday
 ```
+
+The day's target percentage is left in place: clearing a deadline is usually
+temporary, and having the percentage come back with it beats finding it reset.
 
 ### Others
 

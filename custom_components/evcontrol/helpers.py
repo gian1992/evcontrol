@@ -179,6 +179,7 @@ def calculate_available_current(
     auto_timer_active: bool = False,
     auto_last_state: Optional[str] = None,
     actual_battery_charge_w: Optional[float] = None,
+    target_soc: float = 100.0,
 ) -> Tuple[float, str]:
     """
     Calculate available current for EV charging based on mode.
@@ -201,6 +202,10 @@ def calculate_available_current(
         ev_battery_capacity_kwh: EV battery capacity in kWh, required for AUTO/AUTO-ECO modes
         seconds_until_auto_target: Seconds until next charging target time, required for AUTO/AUTO-ECO modes
         automatic_charge_current: Base charging current for AUTO modes (A)
+        target_soc: SOC the deadline asks for (%), default 100. Set per weekday in
+            the schedule: charging to 80% needs materially less time than to 100%,
+            so the deadline becomes critical later and the sun gets longer to do
+            the work.
     
     Returns:
         Tuple of (available_current_amps, debug_message)
@@ -226,7 +231,7 @@ def calculate_available_current(
                 return 0.0, f"{mode.upper()}: No target schedule and no EV data, waiting for both"
             
             time_needed_hours = calculate_charge_time_hours(
-                fallback_soc, 100.0, fallback_capacity,
+                fallback_soc, target_soc, fallback_capacity,
                 automatic_charge_current, voltage, battery_soc
             )
             time_until_target_hours = seconds_until_auto_target / 3600.0
@@ -261,15 +266,16 @@ def calculate_available_current(
             # AUTO-ECO: no PHASE 1 charging even when scarica, go directly to PHASE 2
             _LOGGER.debug(f"AUTO-ECO: EV SOC {ev_soc:.0f}% < 50% threshold, but skipping PHASE 1 (solar-only mode), proceeding to PHASE 2")
         
-        # Calculate time needed at fixed 15A to charge from current SOC to 100%
+        # Calculate time needed at fixed 15A to charge from current SOC to the
+        # target the deadline asks for (100% unless the schedule says otherwise).
         # Used by both AUTO and AUTO-ECO to determine if charging is critical
         time_until_target_hours = seconds_until_auto_target / 3600.0
-        soc_to_charge = 100.0 - ev_soc
+        soc_to_charge = max(0.0, target_soc - ev_soc)
         
         # Always calculate time needed at 15A (not measured speed)
         # This gives both modes a common metric for deadline decisions
         time_needed_hours = calculate_charge_time_hours(
-            ev_soc, 100.0, ev_battery_capacity_kwh, 
+            ev_soc, target_soc, ev_battery_capacity_kwh, 
             automatic_charge_current, voltage, battery_soc
         )
         time_needed_with_margin = time_needed_hours * 1.10
@@ -292,7 +298,7 @@ def calculate_available_current(
                 
                 if ev_charging_speed_percent_per_hour > 0:
                     # We have measured charging speed data - calculate required amps to meet deadline
-                    soc_to_charge = 100.0 - ev_soc
+                    soc_to_charge = max(0.0, target_soc - ev_soc)
                     energy_needed_kwh = ev_battery_capacity_kwh * (soc_to_charge / 100.0)
                     
                     # Calculate what current is needed to reach 100% exactly at deadline.
@@ -400,7 +406,7 @@ def calculate_available_current(
                 
                 if ev_charging_speed_percent_per_hour > 0:
                     # We have measured charging speed data - calculate required amps to meet deadline
-                    soc_to_charge = 100.0 - ev_soc
+                    soc_to_charge = max(0.0, target_soc - ev_soc)
                     energy_needed_kwh = ev_battery_capacity_kwh * (soc_to_charge / 100.0)
                     
                     # Calculate what current is needed to reach 100% exactly at deadline.
@@ -969,6 +975,7 @@ def should_start_auto_charge(
     seconds_until_target: int,
     automatic_charge_current: float,
     battery_soc: float = 100.0,
+    target_soc: float = 100.0,
 ) -> Tuple[bool, str]:
     """
     Determine if AUTO mode should start charging based on time until target.
@@ -987,9 +994,9 @@ def should_start_auto_charge(
     if not battery_capacity_kwh or battery_capacity_kwh <= 0:
         return False, "Battery capacity not estimated yet"
     
-    # Calculate time needed to reach 100% SOC
+    # Calculate time needed to reach the scheduled target SOC
     time_needed_hours = calculate_charge_time_hours(
-        ev_soc, 100.0, battery_capacity_kwh, automatic_charge_current, voltage, battery_soc
+        ev_soc, target_soc, battery_capacity_kwh, automatic_charge_current, voltage, battery_soc
     )
     
     # Convert seconds to hours
@@ -1009,30 +1016,63 @@ def should_start_auto_charge(
     return should_charge, reason
 
 
-def get_next_target_time(target_schedule: dict, current_datetime) -> Tuple[Optional[int], Optional[str]]:
+DEFAULT_TARGET_SOC = 100.0
+
+
+def resolve_target_soc(soc_schedule: Optional[dict], day: str) -> float:
+    """The SOC a given weekday's deadline asks for.
+
+    Missing, blank or unparseable means 100: a schedule written before target SOC
+    existed, or a day the user never touched, has to keep meaning "fill it up".
+    """
+    if not soc_schedule:
+        return DEFAULT_TARGET_SOC
+    raw = soc_schedule.get(day)
+    if raw is None or raw == "":
+        return DEFAULT_TARGET_SOC
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_TARGET_SOC
+    if value <= 0:
+        return DEFAULT_TARGET_SOC
+    return min(100.0, value)
+
+
+def get_next_target_time(
+    target_schedule: dict,
+    current_datetime,
+    soc_schedule: Optional[dict] = None,
+    ev_soc: Optional[float] = None,
+) -> Tuple[Optional[int], Optional[str], float]:
     """
     Get the next target time based on current day/time and schedule.
-    
+
     Args:
         target_schedule: Dict with keys "monday"-"sunday", each containing a time string "HH:MM" or None
         current_datetime: Current datetime object
-    
+        soc_schedule: Dict with the same keys holding the SOC (%) each deadline asks
+            for. Absent or partial means 100% for the days it does not cover.
+        ev_soc: Current EV SOC (%), used only to decide whether a deadline that has
+            just passed still deserves the grace window below.
+
     Returns:
-        Tuple of (seconds_until_target, target_time_str) or (None, None) if no target for today
+        Tuple of (seconds_until_target, target_time_str, target_soc).
+        (None, None, 100.0) when no target applies.
     """
     if not target_schedule:
-        return None, None
-    
+        return None, None, DEFAULT_TARGET_SOC
+
     from datetime import datetime, timedelta
-    
+
     day_names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
     current_weekday_name = day_names[current_datetime.weekday()]
-    current_weekday_idx = current_datetime.weekday()
-    
+
     # Check if today has a target and it hasn't passed yet
     target_time_str = target_schedule.get(current_weekday_name)
-    
+
     if target_time_str:
+        target_soc = resolve_target_soc(soc_schedule, current_weekday_name)
         try:
             target_hour, target_minute = map(int, target_time_str.split(":"))
             target_datetime = current_datetime.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
@@ -1041,36 +1081,45 @@ def get_next_target_time(target_schedule: dict, current_datetime) -> Tuple[Optio
                 # Target hasn't passed yet
                 time_delta = target_datetime - current_datetime
                 seconds_until_target = int(time_delta.total_seconds())
-                return seconds_until_target, target_time_str
+                return seconds_until_target, target_time_str, target_soc
 
             # Target just passed: stay in CRITICAL mode for a 30-minute grace window.
             # Without this, the system switches to "NOT CRITICAL" (next day's target is 24h away)
             # and stops charging even if the EV is at 99%.
+            #
+            # Only when the target was actually missed, though. A deadline asking for
+            # 80% on a car already at 80% is satisfied, and forcing it critical here
+            # would pull grid power at full tariff to charge a car that is done.
             elapsed_seconds = (current_datetime - target_datetime).total_seconds()
-            if elapsed_seconds <= 1800:  # 30 minutes
-                return 60, target_time_str  # 60 s = very critical → charge at max amps to finish ASAP
-            # More than 30 min past target → fall through to look for next day's target
+            target_met = ev_soc is not None and ev_soc >= target_soc - 0.5
+            if elapsed_seconds <= 1800 and not target_met:  # 30 minutes
+                return 60, target_time_str, target_soc  # 60 s = very critical -> charge at max amps to finish ASAP
+            # More than 30 min past target, or target already met -> look for next day's target
         except (ValueError, AttributeError):
             pass
-    
+
     # No target for today or it has passed - look for next target in future days
     for days_ahead in range(1, 8):  # Check next 7 days max
         future_date = current_datetime + timedelta(days=days_ahead)
         future_weekday_idx = future_date.weekday()
         future_weekday_name = day_names[future_weekday_idx]
-        
+
         target_time_str = target_schedule.get(future_weekday_name)
         if target_time_str:
             # Found a target day
             try:
                 target_hour, target_minute = map(int, target_time_str.split(":"))
                 target_datetime = future_date.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
-                
+
                 time_delta = target_datetime - current_datetime
                 seconds_until_target = int(time_delta.total_seconds())
-                return seconds_until_target, target_time_str
+                return (
+                    seconds_until_target,
+                    target_time_str,
+                    resolve_target_soc(soc_schedule, future_weekday_name),
+                )
             except (ValueError, AttributeError):
                 continue
-    
+
     # No target found in next 7 days
-    return None, None
+    return None, None, DEFAULT_TARGET_SOC

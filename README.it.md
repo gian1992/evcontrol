@@ -47,9 +47,17 @@ più accorto di una semplice soglia sul surplus:
 
 ### Scadenze settimanali
 
-Ogni giorno della settimana può avere un orario obiettivo: il momento entro cui l'auto
-deve essere pronta. I giorni senza orario caricano semplicemente col surplus, senza
-niente da recuperare.
+Ogni giorno della settimana può avere una scadenza: il momento entro cui l'auto deve
+essere pronta, e quanto deve essere carica a quel punto. I giorni senza orario
+caricano semplicemente col surplus, senza niente da recuperare.
+
+La percentuale vale 100% di default ed è ciò su cui il pianificatore calcola
+all'indietro. Chiedere l'80% richiede molta meno energia — e salta la maggiorazione
+CC/CV che si applica solo vicino alla carica completa — quindi l'ultimo momento utile
+per passare alla rete si sposta di ore più tardi, e il sole ha più tempo per lavorare.
+Quando l'auto raggiunge l'obiettivo la scadenza è soddisfatta: smette di contare come
+urgente, e la ricarica da surplus prosegue oltre quella soglia gratis invece di
+fermarsi lì.
 
 La pianificazione è modificabile in tre modi, che scrivono tutti gli stessi valori:
 
@@ -134,6 +142,19 @@ action: evcontrol.set_schedule
 data:
   day: weekdays        # un giorno, una lista, "today", oppure "all" / "weekdays" / "weekend"
   time: "07:30"
+  soc: 80              # facoltativo; se omesso il giorno tiene la percentuale che aveva
+```
+
+### `evcontrol.set_target_soc`
+
+Cambia quanto deve essere carica l'auto, senza toccare gli orari. Accetta gli stessi
+valori di `day` di `set_schedule`.
+
+```yaml
+action: evcontrol.set_target_soc
+data:
+  day: saturday
+  soc: 80
 ```
 
 ### `evcontrol.clear_schedule`
@@ -143,6 +164,9 @@ action: evcontrol.clear_schedule
 data:
   day: saturday
 ```
+
+La percentuale obiettivo del giorno resta: cancellare una scadenza di solito è una
+cosa temporanea, ed è meno sorprendente ritrovarsela al suo posto che azzerata.
 
 ### Gli altri
 

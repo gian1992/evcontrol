@@ -18,6 +18,7 @@ from .helpers import (
     apply_auto_timer,
     calculate_charge_time_hours,
     get_next_target_time,
+    resolve_target_soc,
     calculate_excess_after_battery,
 )
 from .status import build_debug, build_status, legacy_status
@@ -139,6 +140,7 @@ class EVControlCoordinator(DataUpdateCoordinator):
         
         # Build target schedule from config
         self.target_schedule = {}
+        self.target_soc_schedule = {}
         self._rebuild_target_schedule()
 
         # Initialize state
@@ -161,6 +163,7 @@ class EVControlCoordinator(DataUpdateCoordinator):
             "ev_soc": 0,  # EV SOC from MQTT
             "ev_battery_capacity_kwh": self.ev_battery_capacity_kwh,
             "target_schedule": dict(self.target_schedule),
+            "target_soc_schedule": dict(self.target_soc_schedule),
         }
 
         update_interval = timedelta(seconds=self.config.get("refresh_rate", 20))
@@ -402,15 +405,22 @@ class EVControlCoordinator(DataUpdateCoordinator):
             # Next scheduled target. Read in every mode: only AUTO/AUTO-ECO act on
             # it, but the diagnostics have to answer "when does this get critical?"
             # precisely when you are sitting in NORMAL or POWER wondering about it.
-            schedule_seconds, target_time_str = get_next_target_time(
-                self.target_schedule, datetime.now()
+            # `ev_soc` is passed so that a deadline already satisfied -- 80% asked
+            # for, 80% in the car -- does not claim the post-deadline grace window
+            # and pull grid power for a charge that is already finished.
+            schedule_seconds, target_time_str, auto_target_soc = get_next_target_time(
+                self.target_schedule,
+                datetime.now(),
+                soc_schedule=self.target_soc_schedule,
+                ev_soc=ev_soc,
             )
             seconds_until_auto_target = (
                 schedule_seconds if current_mode in ["auto", "auto-eco"] else None
             )
             if target_time_str:
                 _LOGGER.debug(
-                    f"Next target {target_time_str} in {schedule_seconds}s "
+                    f"Next target {target_time_str} at {auto_target_soc:.0f}% "
+                    f"in {schedule_seconds}s "
                     f"(acted on: {current_mode in ['auto', 'auto-eco']})"
                 )
 
@@ -444,6 +454,7 @@ class EVControlCoordinator(DataUpdateCoordinator):
                 auto_timer_active=self.auto_timer_active,
                 auto_last_state=self.auto_last_state,
                 actual_battery_charge_w=actual_battery_charge_w,
+                target_soc=auto_target_soc,
             )
 
             # Apply ECO mode timer (10-minute hysteresis for cloud protection)
@@ -478,17 +489,25 @@ class EVControlCoordinator(DataUpdateCoordinator):
             if current_mode in ["auto", "auto-eco"] and seconds_until_auto_target is not None and ev_soc is not None:
                 time_until_target_hours = seconds_until_auto_target / 3600.0
                 time_needed_hours = calculate_charge_time_hours(
-                    ev_soc, 100.0, self.ev_battery_capacity_kwh,
+                    ev_soc, auto_target_soc, self.ev_battery_capacity_kwh,
                     self.config.get("automatic_charge_current", 15),
                     voltage,
                     battery_soc
                 )
+                # A deadline whose SOC is already reached is not a deadline. Without
+                # this, the grace window would force grid charging on a car that has
+                # nothing left to take.
+                target_reached = ev_soc >= auto_target_soc - 0.5
                 # Target passed (grace window): seconds_until_auto_target == 60 → always critical
-                legacy_is_critical = (seconds_until_auto_target <= 60) or (time_until_target_hours <= (time_needed_hours * 1.10))
+                legacy_is_critical = (not target_reached) and (
+                    (seconds_until_auto_target <= 60)
+                    or (time_until_target_hours <= (time_needed_hours * 1.10))
+                )
                 if legacy_is_critical:
                     legacy_critical_reason = (
                         f"deadline: {time_until_target_hours:.1f}h disponibili, "
-                        f"{time_needed_hours:.1f}h necessarie +10%"
+                        f"{time_needed_hours:.1f}h necessarie +10% "
+                        f"per arrivare al {auto_target_soc:.0f}%"
                     )
             # AUTO phase 1 keeps its original meaning: below the SOC threshold the car
             # gets a guaranteed buffer regardless of sun. When the deadline is already
@@ -569,6 +588,7 @@ class EVControlCoordinator(DataUpdateCoordinator):
                 need = ChargeNeed(
                     ev_soc=ev_soc,
                     ev_capacity_kwh=self.ev_battery_capacity_kwh,
+                    target_soc=auto_target_soc,
                     seconds_to_target=seconds_until_auto_target,
                     reference_current_a=self.config.get("automatic_charge_current", 15),
                 )
@@ -660,6 +680,7 @@ class EVControlCoordinator(DataUpdateCoordinator):
                 target_label=target_time_str,
                 reference_current_a=self.config.get("automatic_charge_current", 15),
                 voltage=voltage,
+                target_soc=auto_target_soc,
             )
 
             # Sunset detection, shown alongside the rest of the debug so the reason
@@ -687,7 +708,7 @@ class EVControlCoordinator(DataUpdateCoordinator):
                     auto_time_until_target_hours = seconds_until_auto_target / 3600.0
                     auto_time_needed_hours = calculate_charge_time_hours(
                         ev_soc,
-                        100.0,
+                        auto_target_soc,
                         self.ev_battery_capacity_kwh,
                         self.config.get("automatic_charge_current", 15),
                         voltage,
@@ -873,6 +894,11 @@ class EVControlCoordinator(DataUpdateCoordinator):
                 # The weekly deadlines, so the card can show and edit them without
                 # a second round trip to the config entry.
                 "target_schedule": dict(self.target_schedule),
+                # The SOC each deadline asks for, as a separate attribute: cards
+                # written against 0.4.x parse every value of `target_schedule` as a
+                # time, so widening that dict would blank their rows.
+                "target_soc_schedule": dict(self.target_soc_schedule),
+                "auto_target_soc": auto_target_soc,
                 "auto_is_critical": auto_is_critical,
                 "auto_time_until_target_hours": auto_time_until_target_hours,
                 "auto_time_needed_hours": auto_time_needed_hours,
@@ -1208,6 +1234,14 @@ class EVControlCoordinator(DataUpdateCoordinator):
         for day in SCHEDULE_DAYS:
             time_str = self.config.get(f"target_schedule_{day}", "")
             self.target_schedule[day] = time_str.strip() if time_str and time_str.strip() else None
+            # Kept in its own dict rather than folded into target_schedule, so
+            # clearing a deadline does not silently discard the percentage the
+            # user had chosen for that day.
+            self.target_soc_schedule[day] = int(
+                resolve_target_soc(
+                    {day: self.config.get(f"target_soc_{day}")}, day
+                )
+            )
 
     def apply_target_schedule(self, schedule: Dict[str, Optional[str]]) -> None:
         """Apply a saved schedule without reloading the entry.
@@ -1227,6 +1261,21 @@ class EVControlCoordinator(DataUpdateCoordinator):
         if self.data is not None:
             self.data["target_schedule"] = dict(self.target_schedule)
         _LOGGER.info("Target schedule updated: %s", self.target_schedule)
+
+    def apply_target_soc(self, schedule: Dict[str, Optional[int]]) -> None:
+        """Apply saved target SOCs without reloading the entry.
+
+        The companion of `apply_target_schedule`, and in place for the same
+        reason: nudging tomorrow's percentage from the card must not cost the
+        planner its session, its rolling averages and its write deadband.
+        """
+        for day, value in schedule.items():
+            if day in SCHEDULE_DAYS:
+                self.config[f"target_soc_{day}"] = value or ""
+        self._rebuild_target_schedule()
+        if self.data is not None:
+            self.data["target_soc_schedule"] = dict(self.target_soc_schedule)
+        _LOGGER.info("Target SOC updated: %s", self.target_soc_schedule)
 
     def set_smart_solar_protection(self, enabled: bool) -> None:
         """Enable or disable smart solar protection (anti-cycle for BYD)."""

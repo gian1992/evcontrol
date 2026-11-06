@@ -436,7 +436,7 @@ class EVControlSmartStopsSensor(EVControlBaseSensor):
 
 
 class EVControlNextTargetSensor(EVControlBaseSensor):
-    """When the car is next expected to be full, from the weekly schedule."""
+    """When the car is next due, and how full, from the weekly schedule."""
 
     _attr_unique_id_suffix = "next_target"
     _attr_name = "Next Charge Target"
@@ -455,7 +455,16 @@ class EVControlNextTargetSensor(EVControlBaseSensor):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         d = self.coordinator.data.get("debug_attributes") or {}
-        return {k: d[k] for k in ("prossimo_target", "fra") if k in d}
+        attrs = {k: d[k] for k in ("prossimo_target", "fra") if k in d}
+        # The percentage that deadline asks for: without it the timestamp
+        # alone cannot tell you whether 07:00 means a full car or an 80% one.
+        target_soc = self.coordinator.data.get("auto_target_soc")
+        if target_soc is not None:
+            attrs["target_soc"] = round(target_soc)
+        schedule = self.coordinator.data.get("target_soc_schedule")
+        if schedule:
+            attrs["target_soc_schedule"] = dict(schedule)
+        return attrs
 
 
 class EVControlCriticalAtSensor(EVControlBaseSensor):

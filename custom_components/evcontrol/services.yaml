@@ -60,6 +60,48 @@ set_schedule:
       example: "07:30"
       selector:
         time:
+    soc:
+      required: false
+      example: 80
+      selector:
+        number:
+          min: 5
+          max: 100
+          step: 5
+          unit_of_measurement: "%"
+          mode: slider
+
+set_target_soc:
+  fields:
+    day:
+      required: true
+      example: "monday"
+      selector:
+        select:
+          custom_value: true
+          multiple: true
+          options:
+            - "today"
+            - "all"
+            - "weekdays"
+            - "weekend"
+            - "monday"
+            - "tuesday"
+            - "wednesday"
+            - "thursday"
+            - "friday"
+            - "saturday"
+            - "sunday"
+    soc:
+      required: true
+      example: 80
+      selector:
+        number:
+          min: 5
+          max: 100
+          step: 5
+          unit_of_measurement: "%"
+          mode: slider
 
 clear_schedule:
   fields:

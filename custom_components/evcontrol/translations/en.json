@@ -58,15 +58,22 @@
       },
       "schedule": {
         "title": "Charging schedule",
-        "description": "The time by which the car has to be at 100%.\n\nThis is where slack comes from: the ratio between the time you have and the time you need. On a Saturday morning with a Monday target the slack is around 15 and the home battery becomes untouchable; once it drops below 1.1, hybrid grid charging takes over.\n\nLeave days without a deadline empty. With no target at all the planner stays at the NORMAL level and charges on sunlight only.",
+        "description": "The time by which the car has to be ready, and how full it has to be by then.\n\nThe percentage is what the planner works backwards from: asking for 80% instead of 100% needs materially less energy, so the moment at which falling back to the grid becomes unavoidable moves later and the sun gets longer to do the work. Leave it at 100% for a full charge.\n\nThis is where slack comes from: the ratio between the time you have and the time you need. On a Saturday morning with a Monday target the slack is around 15 and the home battery becomes untouchable; once it drops below 1.1, hybrid grid charging takes over.\n\nLeave days without a deadline empty. With no target at all the planner stays at the NORMAL level and charges on sunlight only.",
         "data": {
           "target_schedule_monday": "Monday — charged by",
+          "target_soc_monday": "Monday — target %",
           "target_schedule_tuesday": "Tuesday — charged by",
+          "target_soc_tuesday": "Tuesday — target %",
           "target_schedule_wednesday": "Wednesday — charged by",
+          "target_soc_wednesday": "Wednesday — target %",
           "target_schedule_thursday": "Thursday — charged by",
+          "target_soc_thursday": "Thursday — target %",
           "target_schedule_friday": "Friday — charged by",
+          "target_soc_friday": "Friday — target %",
           "target_schedule_saturday": "Saturday — charged by",
-          "target_schedule_sunday": "Sunday — charged by"
+          "target_soc_saturday": "Saturday — target %",
+          "target_schedule_sunday": "Sunday — charged by",
+          "target_soc_sunday": "Sunday — target %"
         }
       },
       "auto": {
@@ -186,15 +193,22 @@
       },
       "schedule": {
         "title": "Charging schedule",
-        "description": "The time by which the car has to be at 100%.\n\nThis is where slack comes from: the ratio between the time you have and the time you need. On a Saturday morning with a Monday target the slack is around 15 and the home battery becomes untouchable; once it drops below 1.1, hybrid grid charging takes over.\n\nLeave days without a deadline empty. With no target at all the planner stays at the NORMAL level and charges on sunlight only.",
+        "description": "The time by which the car has to be ready, and how full it has to be by then.\n\nThe percentage is what the planner works backwards from: asking for 80% instead of 100% needs materially less energy, so the moment at which falling back to the grid becomes unavoidable moves later and the sun gets longer to do the work. Leave it at 100% for a full charge.\n\nThis is where slack comes from: the ratio between the time you have and the time you need. On a Saturday morning with a Monday target the slack is around 15 and the home battery becomes untouchable; once it drops below 1.1, hybrid grid charging takes over.\n\nLeave days without a deadline empty. With no target at all the planner stays at the NORMAL level and charges on sunlight only.",
         "data": {
           "target_schedule_monday": "Monday — charged by",
+          "target_soc_monday": "Monday — target %",
           "target_schedule_tuesday": "Tuesday — charged by",
+          "target_soc_tuesday": "Tuesday — target %",
           "target_schedule_wednesday": "Wednesday — charged by",
+          "target_soc_wednesday": "Wednesday — target %",
           "target_schedule_thursday": "Thursday — charged by",
+          "target_soc_thursday": "Thursday — target %",
           "target_schedule_friday": "Friday — charged by",
+          "target_soc_friday": "Friday — target %",
           "target_schedule_saturday": "Saturday — charged by",
-          "target_schedule_sunday": "Sunday — charged by"
+          "target_soc_saturday": "Saturday — target %",
+          "target_schedule_sunday": "Sunday — charged by",
+          "target_soc_sunday": "Sunday — target %"
         }
       },
       "auto": {
@@ -292,6 +306,24 @@
         "time": {
           "name": "Deadline (HH:MM)",
           "description": "Time by which charging should be finished."
+        },
+        "soc": {
+          "name": "Target charge",
+          "description": "How full the car has to be by the deadline. Leave it out to keep whatever the day already has; it is 100% unless you changed it."
+        }
+      }
+    },
+    "set_target_soc": {
+      "name": "Set target charge",
+      "description": "Set how full the car has to be by its deadline, for one or more days of the week, without touching the times themselves.",
+      "fields": {
+        "day": {
+          "name": "Day",
+          "description": "A weekday (monday to sunday), \"today\", or one of the groups \"all\", \"weekdays\", \"weekend\". A list of days is also accepted."
+        },
+        "soc": {
+          "name": "Target charge",
+          "description": "How full the car has to be by the deadline."
         }
       }
     },

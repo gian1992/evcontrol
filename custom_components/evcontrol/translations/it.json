@@ -61,12 +61,19 @@
         "description": "L'orario entro cui l'auto deve essere al 100%.\n\nÈ da qui che nasce lo slack: il rapporto fra il tempo che hai e il tempo che serve. Sabato mattina con target lunedì lo slack è intorno a 15 e la batteria di casa diventa intoccabile; quando scende sotto 1,1 si passa alla carica ibrida da rete.\n\nLascia vuoti i giorni senza scadenza. Senza nessun target il pianificatore resta al livello NORMAL e carica solo col sole.",
         "data": {
           "target_schedule_monday": "Lunedì — carica entro le",
+          "target_soc_monday": "Lunedì — percentuale obiettivo",
           "target_schedule_tuesday": "Martedì — carica entro le",
+          "target_soc_tuesday": "Martedì — percentuale obiettivo",
           "target_schedule_wednesday": "Mercoledì — carica entro le",
+          "target_soc_wednesday": "Mercoledì — percentuale obiettivo",
           "target_schedule_thursday": "Giovedì — carica entro le",
+          "target_soc_thursday": "Giovedì — percentuale obiettivo",
           "target_schedule_friday": "Venerdì — carica entro le",
+          "target_soc_friday": "Venerdì — percentuale obiettivo",
           "target_schedule_saturday": "Sabato — carica entro le",
-          "target_schedule_sunday": "Domenica — carica entro le"
+          "target_soc_saturday": "Sabato — percentuale obiettivo",
+          "target_schedule_sunday": "Domenica — carica entro le",
+          "target_soc_sunday": "Domenica — percentuale obiettivo"
         }
       },
       "auto": {
@@ -189,12 +196,19 @@
         "description": "L'orario entro cui l'auto deve essere al 100%.\n\nÈ da qui che nasce lo slack: il rapporto fra il tempo che hai e il tempo che serve. Sabato mattina con target lunedì lo slack è intorno a 15 e la batteria di casa diventa intoccabile; quando scende sotto 1,1 si passa alla carica ibrida da rete.\n\nLascia vuoti i giorni senza scadenza. Senza nessun target il pianificatore resta al livello NORMAL e carica solo col sole.",
         "data": {
           "target_schedule_monday": "Lunedì — carica entro le",
+          "target_soc_monday": "Lunedì — percentuale obiettivo",
           "target_schedule_tuesday": "Martedì — carica entro le",
+          "target_soc_tuesday": "Martedì — percentuale obiettivo",
           "target_schedule_wednesday": "Mercoledì — carica entro le",
+          "target_soc_wednesday": "Mercoledì — percentuale obiettivo",
           "target_schedule_thursday": "Giovedì — carica entro le",
+          "target_soc_thursday": "Giovedì — percentuale obiettivo",
           "target_schedule_friday": "Venerdì — carica entro le",
+          "target_soc_friday": "Venerdì — percentuale obiettivo",
           "target_schedule_saturday": "Sabato — carica entro le",
-          "target_schedule_sunday": "Domenica — carica entro le"
+          "target_soc_saturday": "Sabato — percentuale obiettivo",
+          "target_schedule_sunday": "Domenica — carica entro le",
+          "target_soc_sunday": "Domenica — percentuale obiettivo"
         }
       },
       "auto": {
@@ -292,6 +306,24 @@
         "time": {
           "name": "Scadenza (HH:MM)",
           "description": "Ora entro cui la ricarica deve essere terminata."
+        },
+        "soc": {
+          "name": "Carica obiettivo",
+          "description": "Quanto deve essere carica l'auto entro la scadenza. Omettilo per lasciare la percentuale che il giorno ha già; è 100% se non l'hai mai cambiata."
+        }
+      }
+    },
+    "set_target_soc": {
+      "name": "Imposta carica obiettivo",
+      "description": "Imposta quanto deve essere carica l'auto entro la sua scadenza, per uno o più giorni della settimana, senza toccare gli orari.",
+      "fields": {
+        "day": {
+          "name": "Giorno",
+          "description": "Un giorno della settimana (da monday a sunday), \"today\", oppure uno dei gruppi \"all\", \"weekdays\", \"weekend\". È accettata anche una lista di giorni."
+        },
+        "soc": {
+          "name": "Carica obiettivo",
+          "description": "Quanto deve essere carica l'auto entro la scadenza."
         }
       }
     },

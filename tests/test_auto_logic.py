@@ -44,7 +44,7 @@ def test_get_next_target_time():
     
     # Test 1: Monday at 08:00 (before target at 10:30)
     test_monday_morning = datetime(2025, 1, 13, 8, 0, 0)  # Monday
-    seconds, target_time = get_next_target_time(target_schedule, test_monday_morning)
+    seconds, target_time, target_soc = get_next_target_time(target_schedule, test_monday_morning)
     print(f"Monday 08:00 -> Target at 10:30: {seconds}s (~ {seconds/3600:.1f}h), Target time: {target_time}")
     assert seconds is not None and target_time == "10:30", "Should return Monday's target"
     
@@ -53,28 +53,28 @@ def test_get_next_target_time():
     # so a car at 99% still finishes instead of stopping because the next target is a
     # day away. The window is inclusive, and 11:00 sits exactly on its edge.
     test_monday_late = datetime(2025, 1, 13, 11, 0, 0)  # Monday
-    seconds, target_time = get_next_target_time(target_schedule, test_monday_late)
+    seconds, target_time, target_soc = get_next_target_time(target_schedule, test_monday_late)
     print(f"Monday 11:00 -> Within grace window: {seconds}, {target_time}")
     assert seconds == 60 and target_time == "10:30", "Should stay critical inside the grace window"
     
     # Test 2b: Monday at 11:31, past the grace window. The search then moves on to the
     # following days -- Tuesday has no target, so Wednesday's 14:00 is the next one.
     test_monday_later = datetime(2025, 1, 13, 11, 31, 0)  # Monday
-    seconds, target_time = get_next_target_time(target_schedule, test_monday_later)
+    seconds, target_time, target_soc = get_next_target_time(target_schedule, test_monday_later)
     print(f"Monday 11:31 -> Past grace window: {seconds}s, {target_time}")
     assert target_time == "14:00", "Should roll forward to Wednesday once the window closes"
     
     # Test 3: Tuesday has no target of its own, so the next one is Wednesday's.
     # This assertion used to expect None, from when the lookup only considered today.
     test_tuesday = datetime(2025, 1, 14, 8, 0, 0)  # Tuesday
-    seconds, target_time = get_next_target_time(target_schedule, test_tuesday)
+    seconds, target_time, target_soc = get_next_target_time(target_schedule, test_tuesday)
     print(f"Tuesday 08:00 -> Next target: {seconds}s, {target_time}")
     assert target_time == "14:00", "Should look ahead to Wednesday's target"
     assert seconds == 30 * 3600, "Wednesday 14:00 is 30h after Tuesday 08:00"
     
     # Test 4: Wednesday at 13:00 (before target at 14:00)
     test_wednesday = datetime(2025, 1, 15, 13, 0, 0)  # Wednesday
-    seconds, target_time = get_next_target_time(target_schedule, test_wednesday)
+    seconds, target_time, target_soc = get_next_target_time(target_schedule, test_wednesday)
     print(f"Wednesday 13:00 -> Target at 14:00: {seconds}s (~ {seconds/3600:.1f}h), Target time: {target_time}")
     assert seconds is not None and target_time == "14:00", "Should return Wednesday's target"
     

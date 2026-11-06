@@ -55,6 +55,16 @@ OUTLOOK_PAUSED = "in pausa"
 OUTLOOK_UNKNOWN = "dati insufficienti"
 
 
+def _target_word(target_soc: float) -> str:
+    """"piena" when the deadline wants it all, "all'80%" when it does not."""
+    return "piena" if target_soc >= 99.5 else f"al {target_soc:.0f}%"
+
+
+def _target_adj(target_soc: float) -> str:
+    """Same thing, in the position an adjective takes: "e' piena" / "e' all'80%"."""
+    return "piena" if target_soc >= 99.5 else f"all'{target_soc:.0f}%"
+
+
 def _hhmm(moment: Optional[datetime]) -> str:
     return moment.strftime("%H:%M") if moment else "—"
 
@@ -320,7 +330,16 @@ def _describe_outlook(
                 "Serve il sensore SOC del veicolo.",
                 None, None, extra)
 
-    if need.ev_soc >= 99:
+    # Done means the deadline has what it asked for, not 100%. The cap at 99
+    # stays for a 100% target: CC/CV tapering means the last point can take as
+    # long as the ten before it, and the car often never reports a round 100.
+    done_at = min(99.0, need.target_soc - 0.5)
+    if need.ev_soc >= done_at:
+        if need.target_soc < 99.5:
+            return (OUTLOOK_DONE,
+                    f"L'auto è al {need.ev_soc:.0f}%: l'obiettivo era "
+                    f"{need.target_soc:.0f}%.",
+                    None, None, extra)
         return (OUTLOOK_DONE, f"L'auto è al {need.ev_soc:.0f}%.", None, None, extra)
 
     # Time to full at the current rate, whatever that rate happens to be.
@@ -335,7 +354,8 @@ def _describe_outlook(
     if need.seconds_to_target is None:
         detail = "Nessun orario impostato per oggi: carico quando c'è sole, senza scadenza."
         if full_at:
-            detail += f" Al ritmo attuale sarebbe piena alle {_hhmm(full_at)}."
+            detail += (f" Al ritmo attuale sarebbe {_target_adj(need.target_soc)} "
+                       f"alle {_hhmm(full_at)}.")
         return (OUTLOOK_NO_TARGET, detail, None, full_at, extra)
 
     hours_available = need.seconds_to_target / 3600.0
@@ -353,6 +373,7 @@ def _describe_outlook(
         "tempo_disponibile": _durata(hours_available),
         "tempo_necessario": _durata(hours_needed),
         "energia_mancante_kwh": round(need.energy_needed_kwh(), 1),
+        "target_soc": round(need.target_soc),
     })
 
     # Can it still be done at all, even flat out on the grid?
@@ -376,10 +397,12 @@ def _describe_outlook(
     # Phase 1 is CRITICAL only in the sense that it charges regardless of sun; the
     # deadline itself may be days away, so it is judged like any other case below.
     if decision.urgency == URGENCY_CRITICAL and phase1_soc is None:
-        detail = (f"Sto già caricando anche da rete per arrivare al 100% entro {when}. "
+        detail = (f"Sto già caricando anche da rete per arrivare al "
+                  f"{need.target_soc:.0f}% entro {when}. "
                   f"Servono ancora {_durata(hours_needed)}.")
         if full_at:
-            detail += f" Al ritmo attuale è piena {_quando(full_at, now, 'alle')}."
+            detail += (f" Al ritmo attuale è {_target_adj(need.target_soc)} "
+                       f"{_quando(full_at, now, 'alle')}.")
         return (OUTLOOK_CHARGING_GRID, detail, grid_fallback_at, full_at, extra)
 
     outlook = OUTLOOK_ON_TIME
@@ -395,10 +418,11 @@ def _describe_outlook(
     detail = (
         f"Sì. Entro {when} ho {_durata(hours_available)} e me ne servono "
         f"{_durata(hours_needed)}. {attesa} attacco alla rete e l'auto è comunque "
-        f"piena in tempo."
+        f"{_target_adj(need.target_soc)} in tempo."
     )
     if full_at:
-        detail += f" Al ritmo attuale sarebbe piena {_quando(full_at, now, 'alle')}."
+        detail += (f" Al ritmo attuale sarebbe {_target_adj(need.target_soc)} "
+                   f"{_quando(full_at, now, 'alle')}.")
     return (outlook, detail, grid_fallback_at, full_at, extra)
 
 
@@ -435,10 +459,15 @@ def build_status(
         _LOGGER.exception("Could not build status text: %s", err)
         return ChargeStatus(headline="—", detail=str(err))
 
-    # A car already at 100% has nothing to do, whatever the planner would command.
+    # A car that has reached what the deadline asked for has nothing left to do,
+    # whatever the planner would command.
     if outlook == OUTLOOK_DONE:
         headline = "Auto carica"
-        detail = f"L'auto è al {need.ev_soc:.0f}%: non c'è altro da caricare."
+        if need.target_soc < 99.5:
+            detail = (f"L'auto è al {need.ev_soc:.0f}%, l'obiettivo di oggi era "
+                      f"{need.target_soc:.0f}%: non serve altro.")
+        else:
+            detail = f"L'auto è al {need.ev_soc:.0f}%: non c'è altro da caricare."
 
     # While it is standing still, the status line has room for the two questions
     # anyone actually asks of it: when does this start, and does it still make the
@@ -549,12 +578,13 @@ def build_debug(
     reference_current_a: float,
     voltage: float,
     critical_margin: float = 1.10,
+    target_soc: float = 100.0,
 ) -> ChargeDebug:
     """Compute the deadline and duration figures shown as diagnostics."""
     dbg = ChargeDebug()
     attrs: Dict[str, Any] = {}
 
-    missing = max(0.0, 100.0 - ev_soc) if ev_soc is not None else None
+    missing = max(0.0, target_soc - ev_soc) if ev_soc is not None else None
     energy_kwh = None
     if missing is not None and ev_capacity_kwh:
         energy_kwh = ev_capacity_kwh * missing / 100.0 / CHARGING_EFFICIENCY
