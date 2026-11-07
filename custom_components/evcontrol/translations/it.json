@@ -133,6 +133,9 @@
     },
     "abort": {
       "already_configured": "EV Control è già configurato."
+    },
+    "error": {
+      "margin_too_large": "La riserva di rete è troppo grande per questa fornitura: lascia meno di quanto serve alla colonnina al suo minimo di 6 A, quindi l'auto non caricherebbe mai dalla rete. Abbassa la riserva, oppure alza la corrente di contratto se l'hai impostata troppo bassa."
     }
   },
   "options": {
@@ -266,6 +269,9 @@
           "refresh_rate": "Ogni quanto si ricalcola tutto (s). Tutti i tempi di conferma del pianificatore sono contati in multipli di questo valore."
         }
       }
+    },
+    "error": {
+      "margin_too_large": "La riserva di rete è troppo grande per questa fornitura: lascia meno di quanto serve alla colonnina al suo minimo di 6 A, quindi l'auto non caricherebbe mai dalla rete. Abbassa la riserva, oppure alza la corrente di contratto se l'hai impostata troppo bassa."
     }
   },
   "services": {

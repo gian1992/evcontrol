@@ -104,6 +104,37 @@ sezioni, così non c'è niente che puoi impostare all'inizio e poi non ritrovi:
 La finestra delle opzioni è un menu: entri in una sezione, confermi e torni al menu, con
 le modifiche tenute in sospeso finché non scegli di salvarle.
 
+### Dimensionare la riserva di rete
+
+`grid_safety_margin_w` è potenza lasciata apposta libera sulla fornitura, perché
+un elettrodomestico che parte senza preavviso finisca dentro il contratto invece
+che fuori. Nessun anello di controllo reagisce prima di uno scaldabagno: la
+riserva è ciò che assorbe il gradino, e il controllo si limita a ripristinarla
+dopo.
+
+L'auto è l'unico carico qui che si può frenare, quindi la riserva esce tutta
+dalla sua parte. È un compromesso, e il punto di equilibrio si sposta con la
+taglia della fornitura:
+
+| Contratto | Riserva di default | Resta per casa + auto | Auto con casa ferma |
+|---|---|---|---|
+| 3 kW | 750 W | 2250 W | ~8 A |
+| 4,5 kW | 1125 W | 3375 W | ~13 A |
+| 6 kW | 1500 W | 4500 W | ~18 A |
+| 10 kW+ | 1500 W | 8500 W | massimo colonnina |
+
+Il default è un quarto della fornitura, con pavimento 300 W e tetto 1500 W —
+all'incirca uno scaldabagno, che è il carico da cui conviene proteggersi.
+Impostalo quanto il tuo elettrodomestico più grosso che può accendersi da solo.
+
+**Su una fornitura piccola la riserva non può fare tutto.** A 3 kW un bollitore
+supera da solo l'intero budget qualunque riserva tu metta: lì ti protegge il
+taglio della corrente entro un ciclo di aggiornamento, più la tolleranza di breve
+durata del contatore. Mettere una riserva da 3 kW su una fornitura da 3 kW non
+rende la ricarica sicura, la rende impossibile: il tetto scende sotto i 6 A
+minimi della colonnina e l'auto non carica mai dalla rete. Le opzioni rifiutano
+quella combinazione invece di lasciartela scoprire in una notte muta.
+
 ## Entità
 
 ### Sensori

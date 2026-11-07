@@ -1,5 +1,29 @@
 # EV Control - Changelog
 
+## Version 0.7.1
+
+### Fixed
+- **The 1500 W grid reserve introduced in 0.7.0 stopped a 3 kW supply charging
+  at all.** 3000 W less a 1500 W reserve less a quiet house leaves 1200 W, under
+  the 1380 W a charger needs at its 6 A minimum, so the cap collapsed to zero —
+  silently, every night. The default is now a quarter of the supply, floored at
+  300 W and capped at 1500 W: 750 W at 3 kW, and still 1500 W at 6 kW and above.
+  An explicit setting is untouched; only the default moved.
+
+### Added
+- The options flow refuses a reserve larger than the supply can spare, rather
+  than accepting a configuration under which the car can never charge from the
+  grid. The error says which way to move.
+- When the grid budget is what is holding charging back, the status says so and
+  prints the arithmetic — contract, reserve, house, and the charger minimum it
+  fell under — instead of reporting a bare zero amps.
+- `helpers.default_grid_margin_w` and `helpers.validate_control`, both pure and
+  both covered by tests, so the sizing rule can be checked against supplies the
+  author does not have.
+- A "sizing the grid reserve" section in both READMEs, including the honest part:
+  on a 3 kW supply a kettle exceeds the whole budget whatever the reserve, and
+  what protects you there is the clamp plus the meter's short-term tolerance.
+
 ## Version 0.7.0
 
 Three faults found by reading the recorder after a night in which the charger

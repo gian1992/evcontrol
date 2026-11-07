@@ -104,6 +104,37 @@ you can set at install time is missing later:
 The options dialog is a menu: you step into a section, submit, and land back on the
 menu, with edits held until you choose to save them.
 
+### Sizing the grid reserve
+
+`grid_safety_margin_w` is head deliberately left unused on the supply, so that an
+appliance starting unannounced lands inside the contract rather than outside it.
+No control loop reacts before a water heater does: the reserve is what absorbs
+the step, and the loop only restores the reserve afterwards.
+
+The car is the only load here that can be throttled, so the whole reserve comes
+out of its share. That makes the setting a trade, and the balance moves with the
+size of the supply:
+
+| Contract | Default reserve | Left for house + car | Car at a quiet house |
+|---|---|---|---|
+| 3 kW | 750 W | 2250 W | ~8 A |
+| 4.5 kW | 1125 W | 3375 W | ~13 A |
+| 6 kW | 1500 W | 4500 W | ~18 A |
+| 10 kW+ | 1500 W | 8500 W | charger maximum |
+
+The default is a quarter of the supply, floored at 300 W and capped at 1500 W —
+roughly a water heater, which is the load worth protecting against. Set it to
+your own largest appliance that can start on its own.
+
+**On a small supply the reserve cannot do the whole job.** At 3 kW a kettle
+exceeds the entire budget whatever the reserve is set to, so what protects you
+there is the clamp reacting within one refresh cycle plus whatever short-term
+tolerance your meter allows. Setting a 3 kW reserve on a 3 kW supply does not
+make charging safe, it makes charging impossible: the cap falls below the
+charger's 6 A minimum and the car simply never charges from the grid. The
+options flow refuses that combination rather than letting you discover it over a
+silent night.
+
 ## Entities
 
 ### Sensors

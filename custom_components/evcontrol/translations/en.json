@@ -133,6 +133,9 @@
     },
     "abort": {
       "already_configured": "EV Control is already configured."
+    },
+    "error": {
+      "margin_too_large": "The grid reserve is too large for this supply: it leaves less than a charger needs at its 6 A minimum, so the car would never charge from the grid. Lower the reserve, or raise the contract current if it is set too low."
     }
   },
   "options": {
@@ -266,6 +269,9 @@
           "refresh_rate": "How often everything is recalculated (s). Every planner confirmation time is counted in multiples of this value."
         }
       }
+    },
+    "error": {
+      "margin_too_large": "The grid reserve is too large for this supply: it leaves less than a charger needs at its 6 A minimum, so the car would never charge from the grid. Lower the reserve, or raise the contract current if it is set too low."
     }
   },
   "services": {

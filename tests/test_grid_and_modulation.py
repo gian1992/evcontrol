@@ -265,6 +265,52 @@ def test_latch_releases_when_the_sun_comes_back():
     print("[OK] di giorno il controllo torna al surplus")
 
 
+# ── sizing the reserve for supplies other than this one ─────────────────────
+# The plugin is going public, so the defaults have to survive contracts the
+# author does not have. A 3 kW supply is the common Italian domestic one.
+
+def test_default_margin_leaves_every_supply_able_to_charge():
+    from helpers import default_grid_margin_w
+
+    print("\n=== Il margine di default scala col contratto ===")
+    print("  %-10s %-9s %-11s %s" % ("contratto", "margine", "budget auto", "tetto"))
+    for kw in (3.0, 4.5, 6.0, 10.0):
+        limit = kw * 1000.0
+        margin = default_grid_margin_w(limit)
+        cap, head = grid_import_cap_amps(
+            grid_limit_w=limit, margin_w=margin, house_w=300.0, pv_w=0.0,
+            battery_signed_w=0.0, voltage=230.0, charger_min_a=CHARGER_MIN)
+        print("  %-10s %-9s %-11s %.0f A"
+              % ("%.1f kW" % kw, "%.0f W" % margin, "%.0f W" % max(0.0, head), cap))
+        assert cap >= CHARGER_MIN, (
+            "a %.1f kW il default rende la ricarica impossibile" % kw)
+
+    # The author's own supply keeps the figure chosen deliberately for it.
+    assert default_grid_margin_w(6000.0) == 1500.0
+    # A flat 1500 W is exactly what breaks the small supply, which is the point.
+    broken, _ = grid_import_cap_amps(
+        grid_limit_w=3000.0, margin_w=1500.0, house_w=300.0, pv_w=0.0,
+        battery_signed_w=0.0, voltage=230.0, charger_min_a=CHARGER_MIN)
+    assert broken == 0.0, broken
+    print("  (con 1500W fissi, 3 kW darebbe 0 A: ecco perché scala)")
+    print("[OK] ogni taglia di contratto riesce a caricare")
+
+
+def test_an_impossible_reserve_is_refused_at_configuration_time():
+    from helpers import validate_control
+
+    print("\n=== Una riserva impossibile viene rifiutata ===")
+    bad = {"grid_max_current_amps": 13, "grid_voltage": 230,
+           "grid_safety_margin_w": 1500}
+    good = {"grid_max_current_amps": 13, "grid_voltage": 230,
+            "grid_safety_margin_w": 750}
+    assert validate_control(bad) == "margin_too_large", validate_control(bad)
+    assert validate_control(good) is None, validate_control(good)
+    print("  3 kW con riserva 1500W -> rifiutata")
+    print("  3 kW con riserva  750W -> accettata")
+    print("[OK] l'errore arriva mentre c'è qualcuno a leggerlo")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("REGRESSIONE NOTTE 2026-11-06")
@@ -278,6 +324,8 @@ if __name__ == "__main__":
     test_critical_latches_through_the_night()
     test_latch_releases_when_the_target_is_reached()
     test_latch_releases_when_the_sun_comes_back()
+    test_default_margin_leaves_every_supply_able_to_charge()
+    test_an_impossible_reserve_is_refused_at_configuration_time()
 
     print("\n" + "=" * 62)
     print("[OK] TUTTI I TEST PASSATI")

@@ -28,6 +28,8 @@ from homeassistant.helpers.selector import (
 )
 from homeassistant.const import UnitOfElectricCurrent, UnitOfPower
 
+from .helpers import default_grid_margin_w, validate_control
+
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "evcontrol"
 
@@ -264,7 +266,12 @@ def _control_schema(d: dict) -> dict:
     s: dict = {}
     _slider(s, d, "grid_max_current_amps", 32, 6, 100, 1, "A")
     _slider(s, d, "grid_voltage", 230, 220, 400, 10, "V")
-    _slider(s, d, "grid_safety_margin_w", 1500, 0, 4000, 100, "W")
+    # Default follows the contract: see helpers.default_grid_margin_w for why a
+    # flat figure cannot serve both a 3 kW supply and a 10 kW one.
+    limit_w = (float(d.get("grid_max_current_amps", 32))
+               * float(d.get("grid_voltage", 230)))
+    _slider(s, d, "grid_safety_margin_w", round(default_grid_margin_w(limit_w)),
+            0, 4000, 100, "W")
     _slider(s, d, "refresh_rate", 20, 5, 120, 5, "s")
     # grid_power_entity is gone: the planner derives the grid exchange from the
     # energy balance, which is exact and unambiguous in sign, and the sensor was
@@ -322,6 +329,14 @@ class EVControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             if step_id == "schedule":
                 user_input = _normalise_schedule(user_input)
+            if step_id == "control":
+                error = validate_control(user_input)
+                if error:
+                    return self.async_show_form(
+                        step_id=step_id,
+                        data_schema=vol.Schema(builder({**self._data, **user_input})),
+                        errors={"base": error},
+                    )
             self._data.update(user_input)
             if index + 1 < len(_SECTIONS):
                 return await self._async_section(index + 1)
@@ -398,6 +413,16 @@ class EVControlOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             if step_id == "schedule":
                 user_input = _normalise_schedule(user_input)
+            if step_id == "control":
+                error = validate_control(user_input)
+                if error:
+                    return self.async_show_form(
+                        step_id=step_id,
+                        data_schema=vol.Schema(
+                            _BUILDERS[step_id]({**self._current(), **user_input})
+                        ),
+                        errors={"base": error},
+                    )
             self._pending.update(user_input)
             _LOGGER.debug("evcontrol: sezione %s modificata, %d valori in attesa",
                           step_id, len(self._pending))

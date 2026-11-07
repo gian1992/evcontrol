@@ -17,6 +17,7 @@ from .helpers import (
     apply_eco_timer,
     apply_auto_timer,
     calculate_charge_time_hours,
+    default_grid_margin_w,
     get_next_target_time,
     grid_import_cap_amps,
     resolve_target_soc,
@@ -408,8 +409,13 @@ class EVControlCoordinator(DataUpdateCoordinator):
             # Calculate grid power limit dynamically from contract current
             # grid_max_power_kw = (current_A × voltage_V) / 1000
             grid_max_power_kw = (self.grid_max_current_amps * self.grid_voltage) / 1000.0
-            grid_margin_w = float(
-                self.config.get("grid_safety_margin_w", GRID_SAFETY_MARGIN_W)
+            # Default scaled to the supply: a flat reserve that suits 6 kW
+            # stops a 3 kW contract charging at all. See default_grid_margin_w.
+            _configured_margin = self.config.get("grid_safety_margin_w")
+            grid_margin_w = (
+                float(_configured_margin)
+                if _configured_margin is not None
+                else default_grid_margin_w(grid_max_power_kw * 1000.0)
             )
 
             # Next scheduled target. Read in every mode: only AUTO/AUTO-ECO act on
@@ -709,10 +715,22 @@ class EVControlCoordinator(DataUpdateCoordinator):
                     grid_max_power_kw * 1000.0, grid_margin_w,
                     house_consumption, pv_power,
                 )
-                debug_message = (
-                    f"{debug_message} | limite rete: {grid_cap_a:.0f}A "
-                    f"({max(0.0, import_headroom_w):.0f}W disponibili)"
-                )
+                charger_min_a = float(self.config.get("charger_min_current", 6))
+                if grid_cap_a <= 0:
+                    # Worth spelling out: a reserve too large for the supply
+                    # produces exactly this, forever, and silently.
+                    debug_message = (
+                        f"{debug_message} | fermo per il limite di rete: restano "
+                        f"{max(0.0, import_headroom_w):.0f}W, sotto i "
+                        f"{charger_min_a * voltage:.0f}W del minimo colonnina "
+                        f"({charger_min_a:.0f}A). Contratto {grid_max_power_kw:.1f}kW, "
+                        f"margine {grid_margin_w:.0f}W, casa {house_consumption:.0f}W"
+                    )
+                else:
+                    debug_message = (
+                        f"{debug_message} | limite rete: {grid_cap_a:.0f}A "
+                        f"({max(0.0, import_headroom_w):.0f}W disponibili)"
+                    )
                 available_current = grid_cap_a
 
             charge_debug = build_debug(

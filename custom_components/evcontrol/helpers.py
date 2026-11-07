@@ -156,6 +156,47 @@ def get_available_battery_power(
     return battery_max_drain_power
 
 
+def validate_control(user_input: dict) -> Optional[str]:
+    """Reject a reserve that leaves the charger nothing to run on.
+
+    A margin larger than the supply can spare is not a conservative setting, it
+    is an off switch: the cap collapses below the charger's minimum and the car
+    never charges from the grid again. Caught here, where someone is present to
+    fix it, rather than discovered over a silent night.
+    """
+    volts = float(user_input.get("grid_voltage", 230) or 230)
+    limit_w = float(user_input.get("grid_max_current_amps", 32) or 32) * volts
+    margin_w = float(user_input.get("grid_safety_margin_w", 0) or 0)
+    # 6 A is the lowest minimum any charger here has, and 300 W stands in for a
+    # house that is never quite at zero.
+    if limit_w - margin_w < 6.0 * volts + 300.0:
+        return "margin_too_large"
+    return None
+
+
+def default_grid_margin_w(grid_limit_w: float) -> float:
+    """A reserve that scales with the supply, because a fixed one cannot.
+
+    The reserve has to be big enough to absorb an appliance starting unannounced,
+    and small enough to leave the charger something to work with. Those pull in
+    opposite directions and the balance moves with the size of the supply:
+
+      * 6 kW: 1500 W, the size of a water heater, and 4.5 kW still left over.
+      * 3 kW: 1500 W would leave 1500 W for house and car together -- under the
+        1380 W a charger needs at its 6 A minimum as soon as the house draws
+        anything at all. The car would never charge from the grid, and nothing
+        would say why.
+
+    So a quarter of the supply, floored at 300 W and capped at 1500 W. On a 3 kW
+    contract that is 750 W, which leaves roughly 8 A for the car with a quiet
+    house; on anything 6 kW or larger it settles at a water heater's worth.
+
+    This is only the default. The value is a plain setting and a user who knows
+    their own loads should change it.
+    """
+    return min(1500.0, max(300.0, 0.25 * grid_limit_w))
+
+
 def grid_import_cap_amps(
     grid_limit_w: float,
     margin_w: float,
@@ -192,6 +233,8 @@ def grid_import_cap_amps(
         return 0.0, max(0.0, headroom_w)
     cap = float(int(headroom_w / voltage))
     if cap < charger_min_a:
+        # Not a small allowance, none: a contactor closed on 4 A is a
+        # contactor cycle spent on a current the car will refuse.
         cap = 0.0
     return cap, headroom_w
 
