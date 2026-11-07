@@ -703,9 +703,12 @@ class EVControlCoordinator(DataUpdateCoordinator):
                 margin_w=grid_margin_w,
                 house_w=house_consumption,
                 pv_w=pv_power,
-                battery_signed_w=raw_battery_power_signed or 0.0,
                 voltage=voltage,
                 charger_min_a=float(self.config.get("charger_min_current", 6)),
+                battery_signed_w=raw_battery_power_signed or 0.0,
+                # Same figure the legacy calculation has always added: the
+                # configured drain, zero below the battery's SOC floor.
+                battery_available_w=battery_power or 0.0,
             )
             if available_current > grid_cap_a:
                 _LOGGER.info(
@@ -935,6 +938,7 @@ class EVControlCoordinator(DataUpdateCoordinator):
                 "grid_power_limit": grid_max_power_kw,
                 "grid_safety_margin_w": grid_margin_w,
                 "grid_cap_a": round(grid_cap_a, 1),
+                "grid_headroom_w": round(max(0.0, import_headroom_w)),
                 "battery_reservation_power": current_battery_reservation,
                 "pv_power": pv_power,
                 "house_consumption": house_consumption,

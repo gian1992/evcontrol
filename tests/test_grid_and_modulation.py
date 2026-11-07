@@ -154,20 +154,80 @@ def test_grid_cap_counts_imports_not_consumption():
 
     night, _ = grid_import_cap_amps(
         grid_limit_w=GRID_LIMIT_W, margin_w=1500.0, house_w=1000.0,
-        pv_w=0.0, battery_signed_w=0.0, voltage=VOLTAGE, charger_min_a=CHARGER_MIN)
+        pv_w=0.0, voltage=VOLTAGE, charger_min_a=CHARGER_MIN)
     sunny, _ = grid_import_cap_amps(
         grid_limit_w=GRID_LIMIT_W, margin_w=1500.0, house_w=1000.0,
-        pv_w=5000.0, battery_signed_w=0.0, voltage=VOLTAGE, charger_min_a=CHARGER_MIN)
-    charging_batt, _ = grid_import_cap_amps(
-        grid_limit_w=GRID_LIMIT_W, margin_w=1500.0, house_w=1000.0,
-        pv_w=0.0, battery_signed_w=2000.0, voltage=VOLTAGE, charger_min_a=CHARGER_MIN)
+        pv_w=5000.0, voltage=VOLTAGE, charger_min_a=CHARGER_MIN)
 
     print("  notte          %2.0fA" % night)
     print("  con 5kW di PV  %2.0fA" % sunny)
-    print("  batteria che carica (2kW)  %2.0fA" % charging_batt)
     assert sunny > night, (sunny, night)
-    assert charging_batt < night, (charging_batt, night)
-    print("[OK] il PV allarga il budget, la batteria in carica lo stringe")
+    print("[OK] il PV allarga il budget")
+
+
+def test_a_charging_home_battery_is_headroom_not_a_rival():
+    """Watts going into the battery are watts the car can simply take instead.
+
+    A hybrid inverter charges the battery out of what the loads leave, so a car
+    that asks for those watts gets them and the battery charges slower: the
+    meter never sees the difference. Treating the charge as a competing load --
+    which this did at first -- threw away real headroom for nothing.
+    """
+    print("\n=== La batteria in carica è margine, non un rivale ===")
+
+    idle, _ = grid_import_cap_amps(
+        grid_limit_w=GRID_LIMIT_W, margin_w=1500.0, house_w=1000.0, pv_w=0.0,
+        voltage=VOLTAGE, charger_min_a=CHARGER_MIN,
+        battery_signed_w=0.0, battery_available_w=0.0)
+    charging, _ = grid_import_cap_amps(
+        grid_limit_w=GRID_LIMIT_W, margin_w=1500.0, house_w=1000.0, pv_w=0.0,
+        voltage=VOLTAGE, charger_min_a=CHARGER_MIN,
+        battery_signed_w=2000.0, battery_available_w=0.0)
+
+    print("  batteria ferma          %2.0fA" % idle)
+    print("  batteria in carica 2kW  %2.0fA" % charging)
+    assert charging > idle, (charging, idle)
+    # Exactly the charge power comes back, no more.
+    assert abs((charging - idle) * VOLTAGE - 2000.0) < VOLTAGE, (charging, idle)
+    print("[OK] i watt della carica tornano disponibili, tutti e soli quelli")
+
+
+def test_a_battery_above_its_floor_adds_what_it_can_supply():
+    """Above the SOC floor the battery is supply the meter never sees."""
+    print("\n=== Sopra il minimo, la batteria aggiunge potenza ===")
+
+    below, _ = grid_import_cap_amps(
+        grid_limit_w=GRID_LIMIT_W, margin_w=1500.0, house_w=1000.0, pv_w=0.0,
+        voltage=VOLTAGE, charger_min_a=CHARGER_MIN,
+        battery_signed_w=0.0, battery_available_w=0.0)      # SOC sotto il minimo
+    above, _ = grid_import_cap_amps(
+        grid_limit_w=GRID_LIMIT_W, margin_w=1500.0, house_w=1000.0, pv_w=0.0,
+        voltage=VOLTAGE, charger_min_a=CHARGER_MIN,
+        battery_signed_w=0.0, battery_available_w=2500.0)   # puo' dare 2500W
+
+    print("  SOC sotto il minimo  %2.0fA" % below)
+    print("  SOC sopra, 2500W     %2.0fA" % above)
+    assert abs((above - below) * VOLTAGE - 2500.0) < VOLTAGE, (above, below)
+
+    # Charging and discharging capability stack: stopping the charge frees one,
+    # discharging adds the other, and that is a real 4 kW of swing.
+    both, _ = grid_import_cap_amps(
+        grid_limit_w=GRID_LIMIT_W, margin_w=1500.0, house_w=1000.0, pv_w=0.0,
+        voltage=VOLTAGE, charger_min_a=CHARGER_MIN,
+        battery_signed_w=1500.0, battery_available_w=2500.0)
+    print("  in carica 1500W e puo' dare 2500W  %2.0fA" % both)
+    assert abs((both - below) * VOLTAGE - 4000.0) < VOLTAGE, (both, below)
+
+    # A battery already discharging is spending that capability, not adding to
+    # it: it must not count twice.
+    discharging, _ = grid_import_cap_amps(
+        grid_limit_w=GRID_LIMIT_W, margin_w=1500.0, house_w=1000.0, pv_w=0.0,
+        voltage=VOLTAGE, charger_min_a=CHARGER_MIN,
+        battery_signed_w=-1000.0, battery_available_w=2500.0)
+    assert discharging == above, (discharging, above)
+    print("  gia' in scarica 1000W              %2.0fA (non si conta due volte)"
+          % discharging)
+    print("[OK] la capacita' di scarica entra nel budget una volta sola")
 
 
 def test_grid_cap_collapses_below_the_charger_minimum():
@@ -320,6 +380,8 @@ if __name__ == "__main__":
     test_current_tracks_how_much_is_actually_missing()
     test_grid_cap_absorbs_a_water_heater()
     test_grid_cap_counts_imports_not_consumption()
+    test_a_charging_home_battery_is_headroom_not_a_rival()
+    test_a_battery_above_its_floor_adds_what_it_can_supply()
     test_grid_cap_collapses_below_the_charger_minimum()
     test_critical_latches_through_the_night()
     test_latch_releases_when_the_target_is_reached()

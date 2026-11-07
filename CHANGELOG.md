@@ -1,5 +1,34 @@
 # EV Control - Changelog
 
+## Version 0.7.2
+
+### Fixed
+- **The grid clamp was treating a charging home battery as a rival for the
+  contract.** It subtracted the charge power from the budget, so a battery
+  taking 1.5 kW cost the car 1.5 kW. It does not: a hybrid inverter charges the
+  battery out of what the loads leave, so a car that asks for those watts gets
+  them and the battery charges slower, with the meter seeing no difference.
+  Charge power now counts as headroom to reclaim.
+- **The clamp ignored what the battery can supply.** `calculate_available_current`
+  has always added `battery_power` — the configured drain, zero below the SOC
+  floor — and the clamp, running last, quietly overrode it with a stricter
+  figure. It now adds the same capability, so the two agree.
+
+  The two stack, and that is not double counting: a battery charging at 1.5 kW
+  that can also discharge 2.5 kW is worth 4 kW of headroom, because stopping the
+  charge frees the first and discharging adds the second. A battery already
+  discharging is spending that capability rather than adding to it, and is
+  counted once.
+
+  Concretely, on a 6 kW supply with 1620 W of PV, 253 W of house and the battery
+  charging at 1.5 kW, the cap goes from 19 A to the charger maximum.
+- `grid_headroom_w` on the status sensor, next to `grid_cap_a`.
+
+### Note
+This leans on the battery doing what its configuration says it can. If it does
+not, imports rise and the next cycle cuts the car back — the same exposure as
+any load starting unannounced, which is what `grid_safety_margin_w` covers.
+
 ## Version 0.7.1
 
 ### Fixed

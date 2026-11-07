@@ -202,33 +202,52 @@ def grid_import_cap_amps(
     margin_w: float,
     house_w: float,
     pv_w: float,
-    battery_signed_w: float,
     voltage: float,
     charger_min_a: float,
+    battery_signed_w: float = 0.0,
+    battery_available_w: float = 0.0,
 ) -> Tuple[float, float]:
     """Highest current the car may draw without pushing imports past budget.
 
-    The budget is on *imported* power, not on what the house draws: PV and a
-    discharging home battery are supply, and only what the meter sees counts. So
+    The budget is on *imported* power, not on what the house draws: only what the
+    meter sees counts, so PV and the home battery both widen it.
 
-        import = house + ev - pv + battery_charging
+    The home battery counts twice over, and neither is double counting:
 
-    and the cap is whatever keeps that under `grid_limit_w - margin_w`.
+      * Power going **into** it is not a competing load. A hybrid inverter
+        charges the battery from what is left after the loads, so a car that
+        asks for those watts simply gets them and the battery charges slower.
+        Subtracting them -- which this function did at first -- throws away real
+        headroom for no reason.
+      * Power it can give **out** is supply the meter never sees. Above its SOC
+        floor the battery can cover part of the car, and the caller passes that
+        capability in `battery_available_w`.
 
-    `margin_w` is head deliberately left unused, sized for the largest load that
-    can start without warning. The control loop cannot react before a water
-    heater does, so the reserve is what absorbs it; the loop only restores the
-    reserve afterwards.
+    So a battery charging at 1.5 kW that can also discharge 2.5 kW is worth
+    4 kW of headroom: stopping the charge frees the first, discharging adds the
+    second.
+
+    This leans on the battery doing what it is configured to say it can. If it
+    does not, imports rise and the next cycle -- 20 seconds later -- cuts the
+    car back. That is the same exposure as any load starting unannounced, and
+    `margin_w` is what covers it: head deliberately left unused, sized for the
+    largest load that can start without warning, because no control loop reacts
+    before a water heater does.
 
     Returns (cap_amps, headroom_watts). The cap is floored to a whole amp, and
     collapses to zero below the charger's minimum: there is no point closing a
     contactor on a current the car will ignore.
 
     Args:
-        battery_signed_w: positive = home battery charging (a load),
-                          negative = discharging (a supply).
+        battery_signed_w: measured now; positive = charging, negative =
+            discharging. Only the charging side is read, as headroom to reclaim.
+        battery_available_w: what the battery may supply, already gated by its
+            SOC floor by the caller (see `get_available_battery_power`).
     """
-    headroom_w = grid_limit_w - margin_w - house_w + pv_w - battery_signed_w
+    # Only the charging side: a battery already discharging is supplying some of
+    # `battery_available_w` rather than adding to it.
+    battery_headroom_w = max(0.0, battery_signed_w) + max(0.0, battery_available_w)
+    headroom_w = grid_limit_w - margin_w - house_w + pv_w + battery_headroom_w
     if headroom_w <= 0 or voltage <= 0:
         return 0.0, max(0.0, headroom_w)
     cap = float(int(headroom_w / voltage))
