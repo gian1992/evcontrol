@@ -278,7 +278,10 @@ class EVControlSolarHoldSocNumber(EVControlBaseNumber):
     """
 
     _attr_unique_id_suffix = "solar_hold_soc"
-    _attr_name = "Home Battery Min SOC"
+    # Not to be confused with `battery_min_soc`, which is the SOC below which
+    # the battery stops counting as a source at all. This one is narrower: the
+    # level under which the planner will not open a solar session.
+    _attr_name = "Solar Session Battery Floor"
     _attr_native_min_value = 0.0
     _attr_native_max_value = 100.0
     _attr_native_step = 1.0

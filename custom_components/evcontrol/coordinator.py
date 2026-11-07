@@ -46,13 +46,8 @@ SCHEDULE_DAYS = ["monday", "tuesday", "wednesday", "thursday",
 # household load does not trip the meter. Previously the Normal-mode battery
 # reservation setting was passed in here, which meant one slider silently drove two
 # unrelated things.
-# Head left unused on the supply so that a load starting up -- a water heater,
-# an oven -- lands inside the contract instead of outside it. The car is the
-# only load here that can be throttled, so the whole reserve comes out of its
-# share. Configurable as `grid_safety_margin_w`; the default covers a typical
-# resistive appliance, because a sudden start is exactly the case the reserve
-# exists for and the control loop cannot react before it happens.
-GRID_SAFETY_MARGIN_W = 1500.0
+# The grid reserve lives in helpers.default_grid_margin_w, which scales it to
+# the supply. A constant here would be a second answer to the same question.
 
 # How often the current setpoint is re-sent to the wallbox even when the computed
 # value has not changed. Writing only on change leaves no way back from a setpoint

@@ -104,6 +104,26 @@ you can set at install time is missing later:
 The options dialog is a menu: you step into a section, submit, and land back on the
 menu, with edits held until you choose to save them.
 
+### The six battery settings, and which is which
+
+They sound alike and they are not. Two decide whether the car may lean on the
+house battery at all; two decide how hard; two are about the supply, not the
+battery.
+
+| Setting | Where | What it governs |
+|---|---|---|
+| `battery_min_soc` | Options → Batteria di casa | SOC below which the battery stops counting as a source **anywhere** — POWER mode and the grid budget both. |
+| `battery_max_drain_power` | Options → Batteria di casa | The most it may supply, in watts. Added to the grid budget above the floor. |
+| `number.ev_control_solar_session_battery_floor` (`solar_min_soc`) | Entity | SOC under which the planner will not **open** a solar session. Narrower than `battery_min_soc`: it stops a session starting, not the battery contributing. |
+| `number.ev_control_smart_battery_floor` (`smart_batt_floor_w`) | Entity | Watts the planner guarantees the battery **for charging** while deciding how high the car may ramp. A power floor, not an SOC one. |
+| `number.ev_control_normal_mode_battery_reservation` | Entity | NORMAL mode only: watts held back for the battery. Ignored by the planner. |
+| `grid_safety_margin_w` | Options → Rete e aggiornamento | Nothing to do with the battery: reserve left free on the *supply* for loads that start unannounced. |
+
+The one that catches people is the pair of SOC thresholds. `battery_min_soc` is
+the hard one — under it the battery is not a source, full stop.
+`solar_min_soc` is a preference about starting a session, and it is normally set
+much higher.
+
 ### Sizing the grid reserve
 
 `grid_safety_margin_w` is head deliberately left unused on the supply, so that an

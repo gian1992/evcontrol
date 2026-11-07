@@ -1,5 +1,27 @@
 # EV Control - Changelog
 
+## Version 0.7.3
+
+Naming and documentation only; no behaviour changes.
+
+### Fixed
+- `battery_min_soc` and `battery_max_drain_power` were both described as
+  "affects POWER mode". Since 0.7.2 they also set how much the home battery
+  contributes to the grid budget, in every mode. The descriptions now say so.
+- The `solar_min_soc` entity was called **Home Battery Min SOC**, which is
+  almost exactly what `battery_min_soc` is called and means something else: one
+  stops the battery counting as a source at all, the other only stops the
+  planner opening a solar session. Renamed to **Solar Session Battery Floor**.
+  Display name only — the entity id is unchanged, so nothing breaks.
+
+### Changed
+- `GRID_SAFETY_MARGIN_W` is gone from the coordinator. It had been left behind
+  by 0.7.1 and was a second, silently diverging answer to a question
+  `default_grid_margin_w` already answers; the bounds live beside that function
+  now.
+- Both READMEs gain a table of the six battery-adjacent settings and what each
+  one actually governs.
+
 ## Version 0.7.2
 
 ### Fixed

@@ -104,6 +104,25 @@ sezioni, così non c'è niente che puoi impostare all'inizio e poi non ritrovi:
 La finestra delle opzioni è un menu: entri in una sezione, confermi e torni al menu, con
 le modifiche tenute in sospeso finché non scegli di salvarle.
 
+### Le sei impostazioni della batteria, e quale fa cosa
+
+Si somigliano nel nome e non nel significato. Due decidono **se** l'auto può
+appoggiarsi alla batteria di casa, due **quanto**, due non riguardano la
+batteria ma la fornitura.
+
+| Impostazione | Dove | Cosa governa |
+|---|---|---|
+| `battery_min_soc` | Opzioni → Batteria di casa | SOC sotto cui la batteria smette di contare come fonte **ovunque**: modalità Power e budget di rete insieme. |
+| `battery_max_drain_power` | Opzioni → Batteria di casa | Quanto può erogare al massimo, in watt. Entra nel budget di rete sopra la soglia. |
+| `number.ev_control_soc_minimo_batteria_casa` (`solar_min_soc`) | Entità | SOC sotto cui il pianificatore non **apre** una sessione solare. Più stretta di `battery_min_soc`: impedisce di iniziare, non di contribuire. |
+| `number.ev_control_smart_battery_floor` (`smart_batt_floor_w`) | Entità | Watt che il pianificatore garantisce alla batteria **per caricarsi**, mentre decide quanto far salire l'auto. È una soglia di potenza, non di SOC. |
+| `number.ev_control_normal_mode_battery_reservation` | Entità | Solo modalità Normal: watt tenuti da parte per la batteria. Il pianificatore la ignora. |
+| `grid_safety_margin_w` | Opzioni → Rete e aggiornamento | Non c'entra con la batteria: riserva lasciata libera sulla *fornitura* per i carichi che partono all'improvviso. |
+
+Quella su cui si inciampa è la coppia di soglie SOC. `battery_min_soc` è quella
+dura: sotto, la batteria non è una fonte e basta. `solar_min_soc` è una
+preferenza su quando iniziare, e di solito si tiene molto più alta.
+
 ### Dimensionare la riserva di rete
 
 `grid_safety_margin_w` è potenza lasciata apposta libera sulla fornitura, perché

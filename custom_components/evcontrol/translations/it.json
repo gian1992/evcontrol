@@ -29,9 +29,9 @@
           "battery_soc_entity": "Stato di carica della batteria (%).",
           "battery_power_entity": "Potenza della batteria (W, opzionale ma molto consigliato). Convenzione di segno: positivo in carica, negativo in scarica. Senza questo sensore il pianificatore non può misurare quanto la batteria riesce ad assorbire e ripiega su una stima fissa.",
           "home_battery_capacity_kwh": "Capacità nominale della batteria (kWh). Serve a proiettare a che SOC arriverà al tramonto: se il calcolo dice che si riempirà comunque da sola, tenerle potenza da parte produrrebbe solo immissione e la precedenza passa all'auto. Metti il valore reale — il default è solo un segnaposto.",
-          "battery_min_soc": "SOC sotto cui la batteria non viene più usata come fonte (%). Riguarda la modalità Power.",
+          "battery_min_soc": "SOC sotto cui la batteria di casa smette di contare come fonte (%). Vale sia per la modalità Power sia per il budget di rete: sopra questo livello la batteria è potenza che il contatore non vede, quindi l'auto può prendere di più senza sforare il contratto.",
           "battery_start_charge_soc": "SOC minimo per la modalità ECO classica (%). Ignorato quando il pianificatore intelligente è attivo: lì la protezione passa dal pavimento e dalle soglie di hold, che sono più precise di una soglia unica.",
-          "battery_max_drain_power": "Potenza massima prelevabile dalla batteria (W). Riguarda la modalità Power.",
+          "battery_max_drain_power": "Massima potenza che la batteria di casa può erogare (W). La usa la modalità Power ed entra nel budget di rete quando il SOC è sopra la soglia qui sopra — è potenza che il contatore non vede, quindi allarga quello che l'auto può prendere. Impostala a quanto il tuo inverter eroga davvero: il controllo ci conta, e corregge entro un ciclo se sbaglia.",
           "battery_reservation_power": "Riserva batteria in modalità Normal (W). Vale solo per la modalità Normal: nelle modalità solari la riserva è dinamica e questo valore non viene letto."
         }
       },
@@ -168,9 +168,9 @@
           "battery_soc_entity": "Stato di carica della batteria (%).",
           "battery_power_entity": "Potenza della batteria (W, opzionale ma molto consigliato). Convenzione di segno: positivo in carica, negativo in scarica. Senza questo sensore il pianificatore non può misurare quanto la batteria riesce ad assorbire e ripiega su una stima fissa.",
           "home_battery_capacity_kwh": "Capacità nominale della batteria (kWh). Serve a proiettare a che SOC arriverà al tramonto: se il calcolo dice che si riempirà comunque da sola, tenerle potenza da parte produrrebbe solo immissione e la precedenza passa all'auto. Metti il valore reale — il default è solo un segnaposto.",
-          "battery_min_soc": "SOC sotto cui la batteria non viene più usata come fonte (%). Riguarda la modalità Power.",
+          "battery_min_soc": "SOC sotto cui la batteria di casa smette di contare come fonte (%). Vale sia per la modalità Power sia per il budget di rete: sopra questo livello la batteria è potenza che il contatore non vede, quindi l'auto può prendere di più senza sforare il contratto.",
           "battery_start_charge_soc": "SOC minimo per la modalità ECO classica (%). Ignorato quando il pianificatore intelligente è attivo: lì la protezione passa dal pavimento e dalle soglie di hold, che sono più precise di una soglia unica.",
-          "battery_max_drain_power": "Potenza massima prelevabile dalla batteria (W). Riguarda la modalità Power.",
+          "battery_max_drain_power": "Massima potenza che la batteria di casa può erogare (W). La usa la modalità Power ed entra nel budget di rete quando il SOC è sopra la soglia qui sopra — è potenza che il contatore non vede, quindi allarga quello che l'auto può prendere. Impostala a quanto il tuo inverter eroga davvero: il controllo ci conta, e corregge entro un ciclo se sbaglia.",
           "battery_reservation_power": "Riserva batteria in modalità Normal (W). Vale solo per la modalità Normal: nelle modalità solari la riserva è dinamica e questo valore non viene letto."
         }
       },

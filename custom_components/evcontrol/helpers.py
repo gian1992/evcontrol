@@ -156,6 +156,15 @@ def get_available_battery_power(
     return battery_max_drain_power
 
 
+# The reserve a supply keeps free for loads that start unannounced. A quarter
+# of the supply is the compromise: enough to matter on a small contract,
+# capped at roughly a water heater on a large one, because past that the
+# reserve is protecting against nothing while costing the car real current.
+GRID_MARGIN_FRACTION = 0.25
+GRID_MARGIN_MIN_W = 300.0
+GRID_MARGIN_MAX_W = 1500.0
+
+
 def validate_control(user_input: dict) -> Optional[str]:
     """Reject a reserve that leaves the charger nothing to run on.
 
@@ -194,7 +203,8 @@ def default_grid_margin_w(grid_limit_w: float) -> float:
     This is only the default. The value is a plain setting and a user who knows
     their own loads should change it.
     """
-    return min(1500.0, max(300.0, 0.25 * grid_limit_w))
+    return min(GRID_MARGIN_MAX_W, max(GRID_MARGIN_MIN_W,
+                                     GRID_MARGIN_FRACTION * grid_limit_w))
 
 
 def grid_import_cap_amps(

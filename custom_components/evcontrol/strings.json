@@ -29,9 +29,9 @@
           "battery_soc_entity": "Battery state of charge (%).",
           "battery_power_entity": "Battery power (W, optional but strongly recommended). Sign convention: positive when charging, negative when discharging. Without this sensor the planner cannot measure how much the battery is able to absorb and falls back on a fixed estimate.",
           "home_battery_capacity_kwh": "Nominal battery capacity (kWh). Used to project the SOC it will reach by sunset: if the maths says it will fill up by itself anyway, holding power back for it would only produce export, and the car takes priority. Enter the real value — the default is only a placeholder.",
-          "battery_min_soc": "SOC below which the battery is no longer used as a source (%). Applies to Power mode.",
+          "battery_min_soc": "SOC below which the home battery stops counting as a source (%). It gates both POWER mode and the grid budget: above this level the battery is treated as supply the meter never sees, so the car may draw more without pushing imports past the contract.",
           "battery_start_charge_soc": "Minimum SOC for classic ECO mode (%). Ignored when the smart planner is active: there, protection comes from the floor and the hold thresholds, which are more precise than a single cutoff.",
-          "battery_max_drain_power": "Maximum power that may be drawn from the battery (W). Applies to Power mode.",
+          "battery_max_drain_power": "Most the home battery may supply (W). Used by POWER mode and added to the grid budget whenever SOC is above the floor above — it is power the meter does not see, so it widens what the car may take. Set it to what your inverter will actually deliver: the control loop trusts it, and corrects within one cycle if it turns out to be wrong.",
           "battery_reservation_power": "Battery reservation in Normal mode (W). Applies to Normal mode only: in the solar modes the reservation is dynamic and this value is not read."
         }
       },
@@ -168,9 +168,9 @@
           "battery_soc_entity": "Battery state of charge (%).",
           "battery_power_entity": "Battery power (W, optional but strongly recommended). Sign convention: positive when charging, negative when discharging. Without this sensor the planner cannot measure how much the battery is able to absorb and falls back on a fixed estimate.",
           "home_battery_capacity_kwh": "Nominal battery capacity (kWh). Used to project the SOC it will reach by sunset: if the maths says it will fill up by itself anyway, holding power back for it would only produce export, and the car takes priority. Enter the real value — the default is only a placeholder.",
-          "battery_min_soc": "SOC below which the battery is no longer used as a source (%). Applies to Power mode.",
+          "battery_min_soc": "SOC below which the home battery stops counting as a source (%). It gates both POWER mode and the grid budget: above this level the battery is treated as supply the meter never sees, so the car may draw more without pushing imports past the contract.",
           "battery_start_charge_soc": "Minimum SOC for classic ECO mode (%). Ignored when the smart planner is active: there, protection comes from the floor and the hold thresholds, which are more precise than a single cutoff.",
-          "battery_max_drain_power": "Maximum power that may be drawn from the battery (W). Applies to Power mode.",
+          "battery_max_drain_power": "Most the home battery may supply (W). Used by POWER mode and added to the grid budget whenever SOC is above the floor above — it is power the meter does not see, so it widens what the car may take. Set it to what your inverter will actually deliver: the control loop trusts it, and corrects within one cycle if it turns out to be wrong.",
           "battery_reservation_power": "Battery reservation in Normal mode (W). Applies to Normal mode only: in the solar modes the reservation is dynamic and this value is not read."
         }
       },
