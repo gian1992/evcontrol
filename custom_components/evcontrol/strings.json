@@ -126,6 +126,7 @@
         "data": {
           "grid_max_current_amps": "Maximum contract current (A). 32 A at 230 V is 7.36 kW single-phase. It caps hybrid grid charging once the deadline turns critical.",
           "grid_voltage": "Nominal grid voltage (V). Normally 230 V single-phase.",
+          "grid_safety_margin_w": "Reserve left unused on the supply (W). Head kept free so a load that starts without warning — a water heater, an oven — lands inside the contract instead of outside it. The car is the only load here that can be throttled, so the whole reserve comes out of its share: at a 6 kW limit, 1500 W leaves the car up to 4.5 kW minus whatever the house is already drawing. Set it to the largest appliance that can start on its own.",
           "refresh_rate": "How often everything is recalculated (s). Every planner confirmation time is counted in multiples of this value."
         }
       }
@@ -261,6 +262,7 @@
         "data": {
           "grid_max_current_amps": "Maximum contract current (A). 32 A at 230 V is 7.36 kW single-phase. It caps hybrid grid charging once the deadline turns critical.",
           "grid_voltage": "Nominal grid voltage (V). Normally 230 V single-phase.",
+          "grid_safety_margin_w": "Reserve left unused on the supply (W). Head kept free so a load that starts without warning — a water heater, an oven — lands inside the contract instead of outside it. The car is the only load here that can be throttled, so the whole reserve comes out of its share: at a 6 kW limit, 1500 W leaves the car up to 4.5 kW minus whatever the house is already drawing. Set it to the largest appliance that can start on its own.",
           "refresh_rate": "How often everything is recalculated (s). Every planner confirmation time is counted in multiples of this value."
         }
       }

@@ -126,6 +126,7 @@
         "data": {
           "grid_max_current_amps": "Corrente massima del contratto (A). 32 A a 230 V sono 7,36 kW monofase. Limita la carica ibrida da rete quando la scadenza diventa critica.",
           "grid_voltage": "Tensione nominale di rete (V). Normalmente 230 V monofase.",
+          "grid_safety_margin_w": "Riserva lasciata libera sulla fornitura (W). Potenza tenuta da parte perché un carico che parte senza preavviso — scaldabagno, forno — finisca dentro il contratto invece che fuori. L'auto è l'unico carico qui che si può frenare, quindi la riserva esce tutta dalla sua parte: con limite 6 kW, 1500 W lasciano all'auto fino a 4,5 kW meno quello che la casa sta già assorbendo. Impostalo quanto l'elettrodomestico più grosso che può accendersi da solo.",
           "refresh_rate": "Ogni quanto si ricalcola tutto (s). Tutti i tempi di conferma del pianificatore sono contati in multipli di questo valore."
         }
       }
@@ -261,6 +262,7 @@
         "data": {
           "grid_max_current_amps": "Corrente massima del contratto (A). 32 A a 230 V sono 7,36 kW monofase. Limita la carica ibrida da rete quando la scadenza diventa critica.",
           "grid_voltage": "Tensione nominale di rete (V). Normalmente 230 V monofase.",
+          "grid_safety_margin_w": "Riserva lasciata libera sulla fornitura (W). Potenza tenuta da parte perché un carico che parte senza preavviso — scaldabagno, forno — finisca dentro il contratto invece che fuori. L'auto è l'unico carico qui che si può frenare, quindi la riserva esce tutta dalla sua parte: con limite 6 kW, 1500 W lasciano all'auto fino a 4,5 kW meno quello che la casa sta già assorbendo. Impostalo quanto l'elettrodomestico più grosso che può accendersi da solo.",
           "refresh_rate": "Ogni quanto si ricalcola tutto (s). Tutti i tempi di conferma del pianificatore sono contati in multipli di questo valore."
         }
       }

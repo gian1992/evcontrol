@@ -156,6 +156,46 @@ def get_available_battery_power(
     return battery_max_drain_power
 
 
+def grid_import_cap_amps(
+    grid_limit_w: float,
+    margin_w: float,
+    house_w: float,
+    pv_w: float,
+    battery_signed_w: float,
+    voltage: float,
+    charger_min_a: float,
+) -> Tuple[float, float]:
+    """Highest current the car may draw without pushing imports past budget.
+
+    The budget is on *imported* power, not on what the house draws: PV and a
+    discharging home battery are supply, and only what the meter sees counts. So
+
+        import = house + ev - pv + battery_charging
+
+    and the cap is whatever keeps that under `grid_limit_w - margin_w`.
+
+    `margin_w` is head deliberately left unused, sized for the largest load that
+    can start without warning. The control loop cannot react before a water
+    heater does, so the reserve is what absorbs it; the loop only restores the
+    reserve afterwards.
+
+    Returns (cap_amps, headroom_watts). The cap is floored to a whole amp, and
+    collapses to zero below the charger's minimum: there is no point closing a
+    contactor on a current the car will ignore.
+
+    Args:
+        battery_signed_w: positive = home battery charging (a load),
+                          negative = discharging (a supply).
+    """
+    headroom_w = grid_limit_w - margin_w - house_w + pv_w - battery_signed_w
+    if headroom_w <= 0 or voltage <= 0:
+        return 0.0, max(0.0, headroom_w)
+    cap = float(int(headroom_w / voltage))
+    if cap < charger_min_a:
+        cap = 0.0
+    return cap, headroom_w
+
+
 def calculate_available_current(
     surplus: float,
     battery_power: float,
@@ -180,6 +220,7 @@ def calculate_available_current(
     auto_last_state: Optional[str] = None,
     actual_battery_charge_w: Optional[float] = None,
     target_soc: float = 100.0,
+    charger_floor_current: Optional[float] = None,
 ) -> Tuple[float, str]:
     """
     Calculate available current for EV charging based on mode.
@@ -206,11 +247,25 @@ def calculate_available_current(
             the schedule: charging to 80% needs materially less time than to 100%,
             so the deadline becomes critical later and the sun gets longer to do
             the work.
+        charger_floor_current: the charger's real minimum (A). Only the AUTO
+            deadline paths use it, and only as the floor under the current they
+            work out from the energy still needed and the time left.
+
+            This is not `charger_min_current` above, despite the name of that
+            parameter: the caller passes NORMAL mode's base current there, which
+            is correct for NORMAL and wrong here. Flooring a deadline
+            calculation at NORMAL's base current throws the calculation away
+            whenever the base is set high -- which is how a night that needed
+            13 A spent itself at 23 A instead, finished hours early, and cycled
+            the contactor eight times doing it. Defaults to `charger_min_current`
+            when not given, which keeps old callers behaving as before.
     
     Returns:
         Tuple of (available_current_amps, debug_message)
     """
     grid_max_watts = grid_max_power * 1000  # Convert kW to W
+    # See the argument's docstring: this must not fall back to NORMAL's base.
+    floor_a = charger_floor_current if charger_floor_current is not None else charger_min_current
     
     # Calculate surplus available for EV after safety margin
     # surplus = PV - House - safety_margin
@@ -314,7 +369,7 @@ def calculate_available_current(
                             _LOGGER.warning(f"Calculated amps {amps_needed:.1f}A is unrealistic (>150% of max {charger_max_current}A), measured speed data may be corrupted - using baseline 15A")
                             target_amps = automatic_charge_current  # Fallback to 15A
                         else:
-                            target_amps = max(charger_min_current, min(amps_needed, charger_max_current))
+                            target_amps = max(floor_a, min(amps_needed, charger_max_current))
                         
                         # Additional feedback: compare with measured speed
                         time_at_measured_speed = 0.0
@@ -422,7 +477,7 @@ def calculate_available_current(
                             _LOGGER.warning(f"Calculated amps {amps_needed:.1f}A is unrealistic (>150% of max {charger_max_current}A), measured speed data may be corrupted - using baseline 15A")
                             target_amps = automatic_charge_current  # Fallback to 15A
                         else:
-                            target_amps = max(charger_min_current, min(amps_needed, charger_max_current))
+                            target_amps = max(floor_a, min(amps_needed, charger_max_current))
                         
                         # Additional feedback: compare with measured speed
                         time_at_measured_speed = 0.0

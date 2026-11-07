@@ -264,6 +264,7 @@ def _control_schema(d: dict) -> dict:
     s: dict = {}
     _slider(s, d, "grid_max_current_amps", 32, 6, 100, 1, "A")
     _slider(s, d, "grid_voltage", 230, 220, 400, 10, "V")
+    _slider(s, d, "grid_safety_margin_w", 1500, 0, 4000, 100, "W")
     _slider(s, d, "refresh_rate", 20, 5, 120, 5, "s")
     # grid_power_entity is gone: the planner derives the grid exchange from the
     # energy balance, which is exact and unambiguous in sign, and the sensor was

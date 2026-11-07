@@ -18,6 +18,7 @@ from .helpers import (
     apply_auto_timer,
     calculate_charge_time_hours,
     get_next_target_time,
+    grid_import_cap_amps,
     resolve_target_soc,
     calculate_excess_after_battery,
 )
@@ -44,7 +45,13 @@ SCHEDULE_DAYS = ["monday", "tuesday", "wednesday", "thursday",
 # household load does not trip the meter. Previously the Normal-mode battery
 # reservation setting was passed in here, which meant one slider silently drove two
 # unrelated things.
-GRID_SAFETY_MARGIN_W = 500.0
+# Head left unused on the supply so that a load starting up -- a water heater,
+# an oven -- lands inside the contract instead of outside it. The car is the
+# only load here that can be throttled, so the whole reserve comes out of its
+# share. Configurable as `grid_safety_margin_w`; the default covers a typical
+# resistive appliance, because a sudden start is exactly the case the reserve
+# exists for and the control loop cannot react before it happens.
+GRID_SAFETY_MARGIN_W = 1500.0
 
 # How often the current setpoint is re-sent to the wallbox even when the computed
 # value has not changed. Writing only on change leaves no way back from a setpoint
@@ -401,6 +408,9 @@ class EVControlCoordinator(DataUpdateCoordinator):
             # Calculate grid power limit dynamically from contract current
             # grid_max_power_kw = (current_A × voltage_V) / 1000
             grid_max_power_kw = (self.grid_max_current_amps * self.grid_voltage) / 1000.0
+            grid_margin_w = float(
+                self.config.get("grid_safety_margin_w", GRID_SAFETY_MARGIN_W)
+            )
 
             # Next scheduled target. Read in every mode: only AUTO/AUTO-ECO act on
             # it, but the diagnostics have to answer "when does this get critical?"
@@ -443,7 +453,7 @@ class EVControlCoordinator(DataUpdateCoordinator):
                 current_mode,
                 self.config.get("battery_min_soc", 20),
                 house_consumption,  # Pass actual house consumption (EV subtracted) for grid calculation
-                GRID_SAFETY_MARGIN_W,
+                grid_margin_w,
                 current_battery_reservation,
                 ev_soc=ev_soc,
                 ev_battery_capacity_kwh=self.ev_battery_capacity_kwh,
@@ -455,6 +465,7 @@ class EVControlCoordinator(DataUpdateCoordinator):
                 auto_last_state=self.auto_last_state,
                 actual_battery_charge_w=actual_battery_charge_w,
                 target_soc=auto_target_soc,
+                charger_floor_current=self.config.get("charger_min_current", 6),
             )
 
             # Apply ECO mode timer (10-minute hysteresis for cloud protection)
@@ -671,6 +682,39 @@ class EVControlCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug(f"Ramp-down applied: last={last_available}A, ramped={available_current}A (max -2A per cycle)")
                 # If increasing, use immediately (no ramp-up needed)
 
+            # ── Hard grid clamp ──────────────────────────────────────────────
+            # Last word before the setpoint is written, and deliberately outside
+            # every ramp: the ramps exist to be kind to the car, and the meter is
+            # not interested. A 2 A/cycle descent took 40 seconds to come back
+            # under contract when a 1.5 kW load started mid-session, peaking 13%
+            # over. Downward, this applies at once.
+            #
+            # The budget is on *imported* power, not on the house total, so PV and
+            # a discharging home battery both widen it: they are supply, and only
+            # what the meter sees counts.
+            grid_cap_a, import_headroom_w = grid_import_cap_amps(
+                grid_limit_w=grid_max_power_kw * 1000.0,
+                margin_w=grid_margin_w,
+                house_w=house_consumption,
+                pv_w=pv_power,
+                battery_signed_w=raw_battery_power_signed or 0.0,
+                voltage=voltage,
+                charger_min_a=float(self.config.get("charger_min_current", 6)),
+            )
+            if available_current > grid_cap_a:
+                _LOGGER.info(
+                    "Grid clamp: %.0fA -> %.0fA (budget %.0fW = %.0fW limite "
+                    "- %.0fW margine - %.0fW casa + %.0fW PV)",
+                    available_current, grid_cap_a, max(0.0, import_headroom_w),
+                    grid_max_power_kw * 1000.0, grid_margin_w,
+                    house_consumption, pv_power,
+                )
+                debug_message = (
+                    f"{debug_message} | limite rete: {grid_cap_a:.0f}A "
+                    f"({max(0.0, import_headroom_w):.0f}W disponibili)"
+                )
+                available_current = grid_cap_a
+
             charge_debug = build_debug(
                 now=datetime.now(),
                 ev_soc=ev_soc,
@@ -871,6 +915,8 @@ class EVControlCoordinator(DataUpdateCoordinator):
                 "mode": current_mode,
                 "base_current": current_base_current,
                 "grid_power_limit": grid_max_power_kw,
+                "grid_safety_margin_w": grid_margin_w,
+                "grid_cap_a": round(grid_cap_a, 1),
                 "battery_reservation_power": current_battery_reservation,
                 "pv_power": pv_power,
                 "house_consumption": house_consumption,

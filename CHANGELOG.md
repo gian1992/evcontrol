@@ -1,5 +1,48 @@
 # EV Control - Changelog
 
+## Version 0.7.0
+
+Three faults found by reading the recorder after a night in which the charger
+cycled eight times and briefly pulled 13% over the supply contract. All three
+predate 0.5.0; the night of 2026-11-06 was simply the first time a car was left
+plugged in deeply discharged with a deadline to meet, which is what exercises
+this path at all.
+
+### Fixed
+- **The deadline current was being floored by NORMAL mode's base current.**
+  `calculate_available_current` works out what the car needs from the energy
+  still missing and the time left — 13 A that night — and then clamped it with
+  `max(charger_min_current, …)`. The caller passes NORMAL's base current in that
+  parameter, which is right for NORMAL and wrong for a deadline: with the base
+  set to 23 A, every deadline charge ran at 23 A regardless of what it needed.
+  The AUTO paths now take the charger's real minimum through a separate
+  `charger_floor_current` argument, and the parameter that caused this is
+  documented for what it actually carries.
+- **CRITICAL now latches.** Urgency is a function of slack, and charging moves
+  slack: a session that opens because slack fell to the threshold pushes it back
+  above within the hour, stops being critical, immediately meets the "day is
+  over" stop rule, and ends — after which slack decays to the threshold and it
+  starts again. Eight times, blockers skipped each time because CRITICAL skips
+  them. The state is now held until the target is reached, the sun returns,
+  slack rises past the untouchable threshold, or the deadline goes away.
+- **The grid limit is enforced outside the ramps.** Backing off at 2 A per
+  20-second cycle took 40 seconds to come back under contract when a 1.5 kW load
+  started mid-session, peaking at 6760 W against a 6000 W limit. A hard clamp
+  now runs last, immediately, on the way down. Upward the ramp still applies:
+  gradual is kind to the car, and the meter is not owed gradual.
+
+### Added
+- **`grid_safety_margin_w`** (*Configura → Rete e aggiornamento*), default
+  1500 W, replacing the hardcoded 500 W. It is head deliberately left unused so
+  that a load starting without warning lands inside the contract: the control
+  loop cannot react before a water heater does, so the reserve is what absorbs
+  it. At a 6 kW limit, 1500 W caps house plus car at 4.5 kW.
+- **`grid_import_cap_amps`**, a pure function for that budget, so the rule is
+  testable rather than buried in the control loop. It caps *imported* power, not
+  household consumption: PV and a discharging home battery are supply and widen
+  it, a charging home battery narrows it.
+- `grid_safety_margin_w` and `grid_cap_a` on the status sensor.
+
 ## Version 0.6.0
 
 ### Added

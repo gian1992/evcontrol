@@ -337,6 +337,7 @@ class SmartState:
     stop_dwell_s: int = 0
     session_start: Optional[datetime] = None
     last_stop: Optional[datetime] = None
+    critical_latched: bool = False
     stops_today: int = 0
     stops_day: Optional[date] = None
     headroom_ema_w: Optional[float] = None
@@ -840,6 +841,39 @@ def evaluate_smart_charge(
 
     # CRITICAL bypasses the anti-cycling guards on its own, whether or not the
     # caller supplied a grid-hybrid target: a missed deadline is worse than a cycle.
+    # -- Critical is latching ------------------------------------------------
+    #
+    # Urgency is a function of slack, and slack is a ratio that charging itself
+    # moves: pushing current into the car shrinks the time it still needs faster
+    # than the clock eats the time it has. So a session that starts because slack
+    # fell to the critical threshold raises slack back above it within the hour,
+    # stops being critical, meets the "day is over" rule two lines later, and
+    # stops -- whereupon slack decays back to the threshold and it starts again.
+    # Eight times in one night, on the first night this was ever exercised.
+    #
+    # The exits are the four situations where the question has genuinely changed,
+    # and crossing back over the threshold is not one of them.
+    if urgency == URGENCY_CRITICAL:
+        state.critical_latched = True
+    elif state.critical_latched:
+        released = None
+        if slack is None:
+            released = "scadenza rimossa"
+        elif need.energy_needed_kwh() <= 0.0:
+            released = "obiettivo raggiunto"
+        elif phase == SUN_DAY:
+            released = "e' tornato il sole"
+        elif slack >= cfg.untouchable_slack:
+            released = f"slack risalito a {slack:.1f}"
+        if released:
+            state.critical_latched = False
+        else:
+            urgency = URGENCY_CRITICAL
+            urgency_reason = (
+                f"{urgency_reason}, ma tengo il passo da rete fino all'obiettivo: "
+                f"staccare adesso vorrebbe dire riattaccare fra poco"
+            )
+
     is_critical = urgency == URGENCY_CRITICAL
 
     # -- The rule ------------------------------------------------------------
