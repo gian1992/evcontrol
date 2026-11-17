@@ -286,13 +286,16 @@ def calculate_available_current(
     ev_battery_capacity_kwh: Optional[float] = None,
     seconds_until_auto_target: Optional[int] = None,
     automatic_charge_current: float = 15.0,
-    auto_phase1_soc_threshold: float = 30.0,
+    auto_phase1_soc_threshold: float = 50.0,
     ev_charging_speed_percent_per_hour: float = 0.0,
     auto_timer_active: bool = False,
     auto_last_state: Optional[str] = None,
     actual_battery_charge_w: Optional[float] = None,
     target_soc: float = 100.0,
     charger_floor_current: Optional[float] = None,
+    now_hour: Optional[float] = None,
+    band_start_hour: Optional[float] = None,
+    band_end_hour: Optional[float] = None,
 ) -> Tuple[float, str]:
     """
     Calculate available current for EV charging based on mode.
@@ -381,17 +384,17 @@ def calculate_available_current(
         if seconds_until_auto_target is None:
             return 0.0, f"{mode.upper()}: No target schedule defined, waiting (EV SOC known: {ev_soc:.0f}%)"
         
-        # PHASE 1: AUTO charges immediately until 50% SOC
+        # PHASE 1: AUTO charges immediately up to the phase-1 threshold
         # AUTO-ECO skips this and goes directly to solar-waiting logic
-        if mode == "auto" and ev_soc < 50.0:
+        if mode == "auto" and ev_soc < auto_phase1_soc_threshold:
             available_amps = automatic_charge_current
             time_hours = seconds_until_auto_target / 3600.0
-            return available_amps, f"{mode.upper()} PHASE 1: EV SOC {ev_soc:.0f}% < 50% threshold, charging at {automatic_charge_current}A (target in {time_hours:.1f}h)"
+            return available_amps, f"{mode.upper()} PHASE 1: EV SOC {ev_soc:.0f}% < {auto_phase1_soc_threshold:.0f}% threshold, charging at {automatic_charge_current}A (target in {time_hours:.1f}h)"
         
         # AUTO-ECO explicit check: if below 50%, skip PHASE 1 and wait for solar in PHASE 2
-        if mode == "auto-eco" and ev_soc < 50.0:
+        if mode == "auto-eco" and ev_soc < auto_phase1_soc_threshold:
             # AUTO-ECO: no PHASE 1 charging even when scarica, go directly to PHASE 2
-            _LOGGER.debug(f"AUTO-ECO: EV SOC {ev_soc:.0f}% < 50% threshold, but skipping PHASE 1 (solar-only mode), proceeding to PHASE 2")
+            _LOGGER.debug(f"AUTO-ECO: EV SOC {ev_soc:.0f}% < {auto_phase1_soc_threshold:.0f}% threshold, but skipping PHASE 1 (solar-only mode), proceeding to PHASE 2")
         
         # Calculate time needed at fixed 15A to charge from current SOC to the
         # target the deadline asks for (100% unless the schedule says otherwise).
@@ -407,55 +410,52 @@ def calculate_available_current(
         )
         time_needed_with_margin = time_needed_hours * 1.10
         
+        # One plan answers both halves of the deadline question -- when the grid
+        # takes over, and at what current -- so that the two can no longer
+        # disagree. See helpers.plan_grid_deadline.
+        # The reference duration the plan is built on: charging losses and the
+        # taper near a full pack, but not calculate_charge_time_hours' home-battery
+        # fudge. That factor inflates the *car's* charge time because the *house*
+        # battery is low -- a stand-in for "less power available" that the grid cap
+        # now accounts for exactly, so counting it here would count it twice. It is
+        # worth 16% at a 19% house battery, which is the difference between starting
+        # at 22:00 and starting two hours early for nothing.
+        plan_hours_at_reference = calculate_charge_time_hours(
+            ev_soc, target_soc, ev_battery_capacity_kwh,
+            automatic_charge_current, voltage, 100.0
+        )
+        plan_charge_now, plan_pace_a, plan_start_in_h, plan_why = plan_grid_deadline(
+            hours_until_deadline=time_until_target_hours,
+            energy_needed_kwh=ev_battery_capacity_kwh * (max(0.0, target_soc - ev_soc) / 100.0),
+            voltage=voltage,
+            reference_current=automatic_charge_current,
+            charger_min_current=floor_a,
+            charger_max_current=charger_max_current,
+            now_hour=now_hour,
+            band_start_hour=band_start_hour,
+            band_end_hour=band_end_hour,
+            hours_at_reference=plan_hours_at_reference,
+        )
+
         if mode == "auto":
-            # AUTO PHASE 1: If SOC < 50%, charge at 15A to build up battery
-            if ev_soc < 50.0:
+            # AUTO PHASE 1: below the threshold, charge at the base current
+            if ev_soc < auto_phase1_soc_threshold:
                 available_amps = automatic_charge_current
-                return available_amps, f"{mode.upper()} PHASE 1: EV SOC {ev_soc:.0f}% < 50%, charging at {automatic_charge_current}A to build buffer"
+                return available_amps, f"{mode.upper()} PHASE 1: EV SOC {ev_soc:.0f}% < {auto_phase1_soc_threshold:.0f}%, charging at {automatic_charge_current}A to build buffer"
             
             # AUTO PHASE 2: Prefer solar, but use grid if deadline is critical
             excess_after_battery = calculate_excess_after_battery(surplus, battery_power, battery_soc, actual_battery_charge_w)
             
-            if time_until_target_hours <= time_needed_with_margin:
+            if plan_charge_now:
                 # CRITICAL: Not enough time at 15A, must start charging now
                 # Strategy: Use solar + grid hybrid, with dynamic current adjustment based on measured charging speed
                 
-                # Calculate dynamic charging current based on actual progress (if speed data available)
-                target_amps = automatic_charge_current  # Default to 15A
-                
-                if ev_charging_speed_percent_per_hour > 0:
-                    # We have measured charging speed data - calculate required amps to meet deadline
-                    soc_to_charge = max(0.0, target_soc - ev_soc)
-                    energy_needed_kwh = ev_battery_capacity_kwh * (soc_to_charge / 100.0)
-                    
-                    # Calculate what current is needed to reach 100% exactly at deadline.
-                    # Divide by CHARGING_EFFICIENCY: wall must supply more than battery receives.
-                    # Without this, the formula underestimates required amps and current keeps increasing.
-                    if time_until_target_hours > 0:
-                        power_needed_kw = energy_needed_kwh / time_until_target_hours / CHARGING_EFFICIENCY
-                        amps_needed = power_to_current_float(power_needed_kw * 1000.0, voltage)
-                        
-                        # Clamp to valid range AND add sanity check for amps_needed
-                        # If amps_needed > charger_max * 1.5, measured speed is likely corrupted
-                        if amps_needed > charger_max_current * 1.5:
-                            _LOGGER.warning(f"Calculated amps {amps_needed:.1f}A is unrealistic (>150% of max {charger_max_current}A), measured speed data may be corrupted - using baseline 15A")
-                            target_amps = automatic_charge_current  # Fallback to 15A
-                        else:
-                            target_amps = max(floor_a, min(amps_needed, charger_max_current))
-                        
-                        # Additional feedback: compare with measured speed
-                        time_at_measured_speed = 0.0
-                        if ev_charging_speed_percent_per_hour > 0:
-                            time_at_measured_speed = soc_to_charge / ev_charging_speed_percent_per_hour
-                        
-                        _LOGGER.debug(
-                            f"AUTO CRITICAL dynamic: SOC {ev_soc:.0f}% -> 100% ({soc_to_charge:.1f}%), "
-                            f"time left {time_until_target_hours:.2f}h, "
-                            f"baseline 15A needs {time_needed_hours:.2f}h, "
-                            f"measured speed {ev_charging_speed_percent_per_hour:.2f}%/h would take {time_at_measured_speed:.2f}h, "
-                            f"target amps: {target_amps:.1f}A"
-                        )
-                
+                # The pace comes from the plan: remaining energy over remaining
+                # time, margin included. It replaces a guess built on the
+                # measured charge speed, which needed a corruption check because
+                # a stale reading could demand 48A.
+                target_amps = plan_pace_a
+
                 # Now apply the calculated target amperage using hybrid solar+grid approach
                 if excess_after_battery > 0:
                     # Calculate how much current we can get from solar
@@ -489,7 +489,9 @@ def calculate_available_current(
             else:
                 # NOT CRITICAL: Plenty of time, wait for solar excess
                 available_amps = 0.0
-                hours_until_charge_needed = max(0, time_until_target_hours - time_needed_hours)
+                # What the plan is actually waiting for, instead of a second
+                # estimate that could contradict it on screen.
+                hours_until_charge_needed = plan_start_in_h if plan_start_in_h is not None else 0.0
                 if excess_after_battery >= charger_min_current * voltage:
                     # Solar excess available (battery has taken its share)
                     available_amps = power_to_current(excess_after_battery, voltage)
@@ -503,67 +505,37 @@ def calculate_available_current(
                     elif auto_last_state == "solar_charging":
                         # Just transitioned from solar to insufficient: return min current for 1 cycle
                         # to let timer detect this and activate hold_6a in next evaluation
-                        return charger_min_current, f"{mode.upper()} PHASE 2: Solar insufficient ({excess_after_battery:.0f}W < {charger_min_current * voltage:.0f}W needed), keeping {charger_min_current}A for timer to engage. Target in {time_until_target_hours:.1f}h, will start AUTO charging in ~{hours_until_charge_needed:.1f}h (need {time_needed_hours:.1f}h at 15A to reach 100%)"
+                        return charger_min_current, f"{mode.upper()} PHASE 2: Solar insufficient ({excess_after_battery:.0f}W < {charger_min_current * voltage:.0f}W needed), keeping {charger_min_current}A for timer to engage. Target in {time_until_target_hours:.1f}h, {plan_why}"
                     else:
                         # State is unknown or "waiting_for_solar" - return 0
                         if surplus > 0 and (battery_power or 0) > 0:
                             if battery_soc < 98:
                                 # Battery reduction was applied (not full)
                                 reduced_battery = min(battery_power, 1500)
-                                return 0.0, f"{mode.upper()} PHASE 2: Waiting ({time_until_target_hours:.1f}h until target, will start AUTO charging in {hours_until_charge_needed:.1f}h). No excess (battery priority: {surplus:.0f}W - {reduced_battery:.0f}W battery = {excess_after_battery:.0f}W, need {charger_min_current * voltage:.0f}W)"
+                                return 0.0, f"{mode.upper()} PHASE 2: Waiting ({time_until_target_hours:.1f}h until target, {plan_why}). No excess (battery priority: {surplus:.0f}W - {reduced_battery:.0f}W battery = {excess_after_battery:.0f}W, need {charger_min_current * voltage:.0f}W)"
                             else:
                                 # Battery is full, no reduction applied
-                                return 0.0, f"{mode.upper()} PHASE 2: Waiting ({time_until_target_hours:.1f}h until target, will start AUTO charging in {hours_until_charge_needed:.1f}h). No excess (battery FULL: {surplus:.0f}W - {battery_power:.0f}W = {excess_after_battery:.0f}W, need {charger_min_current * voltage:.0f}W)"
+                                return 0.0, f"{mode.upper()} PHASE 2: Waiting ({time_until_target_hours:.1f}h until target, {plan_why}). No excess (battery FULL: {surplus:.0f}W - {battery_power:.0f}W = {excess_after_battery:.0f}W, need {charger_min_current * voltage:.0f}W)"
                         else:
-                            return 0.0, f"{mode.upper()} PHASE 2: Waiting ({time_until_target_hours:.1f}h until target, will start AUTO charging in {hours_until_charge_needed:.1f}h). Insufficient power (surplus {surplus}W - battery {battery_power or 0}W = {excess_after_battery}W, need {charger_min_current * voltage:.0f}W)"
+                            return 0.0, f"{mode.upper()} PHASE 2: Waiting ({time_until_target_hours:.1f}h until target, {plan_why}). Insufficient power (surplus {surplus}W - battery {battery_power or 0}W = {excess_after_battery}W, need {charger_min_current * voltage:.0f}W)"
         
         else:  # auto-eco
-            # AUTO-ECO: Skip Phase 1 (50% threshold), go directly to solar-first Phase 2
+            # AUTO-ECO: Skip Phase 1 entirely, go directly to solar-first Phase 2
             # Will start earlier than AUTO if no sun (takes longer from lower SOC)
             
             # AUTO-ECO PHASE 2: Same deadline logic as AUTO, but solar-first
             excess_after_battery = calculate_excess_after_battery(surplus, battery_power, battery_soc, actual_battery_charge_w)
             
-            if time_until_target_hours <= time_needed_hours * 1.10:
+            if plan_charge_now:
                 # CRITICAL: Not enough time at 15A, must start charging now
                 # Strategy: Use solar + grid hybrid, with dynamic current adjustment based on measured charging speed
                 
-                # Calculate dynamic charging current based on actual progress (if speed data available)
-                target_amps = automatic_charge_current  # Default to 15A
-                
-                if ev_charging_speed_percent_per_hour > 0:
-                    # We have measured charging speed data - calculate required amps to meet deadline
-                    soc_to_charge = max(0.0, target_soc - ev_soc)
-                    energy_needed_kwh = ev_battery_capacity_kwh * (soc_to_charge / 100.0)
-                    
-                    # Calculate what current is needed to reach 100% exactly at deadline.
-                    # Divide by CHARGING_EFFICIENCY: wall must supply more than battery receives.
-                    # Without this, the formula underestimates required amps and current keeps increasing.
-                    if time_until_target_hours > 0:
-                        power_needed_kw = energy_needed_kwh / time_until_target_hours / CHARGING_EFFICIENCY
-                        amps_needed = power_to_current_float(power_needed_kw * 1000.0, voltage)
-                        
-                        # Clamp to valid range AND add sanity check for amps_needed
-                        # If amps_needed > charger_max * 1.5, measured speed is likely corrupted
-                        if amps_needed > charger_max_current * 1.5:
-                            _LOGGER.warning(f"Calculated amps {amps_needed:.1f}A is unrealistic (>150% of max {charger_max_current}A), measured speed data may be corrupted - using baseline 15A")
-                            target_amps = automatic_charge_current  # Fallback to 15A
-                        else:
-                            target_amps = max(floor_a, min(amps_needed, charger_max_current))
-                        
-                        # Additional feedback: compare with measured speed
-                        time_at_measured_speed = 0.0
-                        if ev_charging_speed_percent_per_hour > 0:
-                            time_at_measured_speed = soc_to_charge / ev_charging_speed_percent_per_hour
-                        
-                        _LOGGER.debug(
-                            f"AUTO-ECO CRITICAL dynamic: SOC {ev_soc:.0f}% -> 100% ({soc_to_charge:.1f}%), "
-                            f"time left {time_until_target_hours:.2f}h, "
-                            f"baseline 15A needs {time_needed_hours:.2f}h, "
-                            f"measured speed {ev_charging_speed_percent_per_hour:.2f}%/h would take {time_at_measured_speed:.2f}h, "
-                            f"target amps: {target_amps:.1f}A"
-                        )
-                
+                # The pace comes from the plan: remaining energy over remaining
+                # time, margin included. It replaces a guess built on the
+                # measured charge speed, which needed a corruption check because
+                # a stale reading could demand 48A.
+                target_amps = plan_pace_a
+
                 # Now apply the calculated target amperage using hybrid solar+grid approach
                 if excess_after_battery > 0:
                     # Calculate how much current we can get from solar
@@ -607,7 +579,9 @@ def calculate_available_current(
                     # IMPORTANT: When surplus just became insufficient, maintain charger_min_current for 1 cycle
                     # to allow the timer (applied next in coordinator) a chance to activate hold_6a state.
                     # Once timer updates state to "hold_6a", subsequent cycles will maintain it via timer.
-                    hours_until_charge_needed = max(0, time_until_target_hours - time_needed_hours)
+                    # What the plan is actually waiting for, instead of a
+                    # second estimate that could contradict it on screen.
+                    hours_until_charge_needed = plan_start_in_h if plan_start_in_h is not None else 0.0
                     if auto_timer_active and auto_last_state == "hold_6a":
                         # Timer is holding 6A from battery to avoid stacca-attacca
                         return charger_min_current, f"{mode.upper()} PHASE 2: Timer holding 6A from battery (target in {time_until_target_hours:.1f}h, charge time at 15A: {time_needed_hours:.1f}h)"
@@ -615,19 +589,19 @@ def calculate_available_current(
                     elif auto_last_state == "solar_charging":
                         # Just transitioned from solar to insufficient: return min current for 1 cycle
                         # to let timer detect this and activate hold_6a in next evaluation
-                        return charger_min_current, f"{mode.upper()} PHASE 2: Solar insufficient ({excess_after_battery:.0f}W < {charger_min_current * voltage:.0f}W needed), keeping {charger_min_current}A for timer to engage. Target in {time_until_target_hours:.1f}h, will start AUTO charging in ~{hours_until_charge_needed:.1f}h (need {time_needed_hours:.1f}h at 15A to reach 100%)"
+                        return charger_min_current, f"{mode.upper()} PHASE 2: Solar insufficient ({excess_after_battery:.0f}W < {charger_min_current * voltage:.0f}W needed), keeping {charger_min_current}A for timer to engage. Target in {time_until_target_hours:.1f}h, {plan_why}"
                     else:
                         # State is unknown or "waiting_for_solar" - return 0
                         if surplus > 0 and (battery_power or 0) > 0:
                             if battery_soc < 98:
                                 # Battery reduction was applied (not full)
                                 reduced_battery = min(battery_power, 1500)
-                                return 0.0, f"{mode.upper()} PHASE 2: Waiting ({time_until_target_hours:.1f}h until target, will start AUTO charging in {hours_until_charge_needed:.1f}h). No excess (battery priority: {surplus:.0f}W - {reduced_battery:.0f}W battery = {excess_after_battery:.0f}W, need {charger_min_current * voltage:.0f}W)"
+                                return 0.0, f"{mode.upper()} PHASE 2: Waiting ({time_until_target_hours:.1f}h until target, {plan_why}). No excess (battery priority: {surplus:.0f}W - {reduced_battery:.0f}W battery = {excess_after_battery:.0f}W, need {charger_min_current * voltage:.0f}W)"
                             else:
                                 # Battery is full, no reduction applied
-                                return 0.0, f"{mode.upper()} PHASE 2: Waiting ({time_until_target_hours:.1f}h until target, will start AUTO charging in {hours_until_charge_needed:.1f}h). No excess (battery FULL: {surplus:.0f}W - {battery_power:.0f}W = {excess_after_battery:.0f}W, need {charger_min_current * voltage:.0f}W)"
+                                return 0.0, f"{mode.upper()} PHASE 2: Waiting ({time_until_target_hours:.1f}h until target, {plan_why}). No excess (battery FULL: {surplus:.0f}W - {battery_power:.0f}W = {excess_after_battery:.0f}W, need {charger_min_current * voltage:.0f}W)"
                         else:
-                            return 0.0, f"{mode.upper()} PHASE 2: Waiting ({time_until_target_hours:.1f}h until target, will start AUTO charging in {hours_until_charge_needed:.1f}h). Insufficient power (surplus {surplus}W - battery {battery_power or 0}W = {excess_after_battery}W, need {charger_min_current * voltage:.0f}W)"
+                            return 0.0, f"{mode.upper()} PHASE 2: Waiting ({time_until_target_hours:.1f}h until target, {plan_why}). Insufficient power (surplus {surplus}W - battery {battery_power or 0}W = {excess_after_battery}W, need {charger_min_current * voltage:.0f}W)"
     
     if mode == "eco":
         # ECO mode: Only charge from solar when:
@@ -694,6 +668,195 @@ def calculate_available_current(
     
     _LOGGER.debug(reason)
     return available_amps, reason
+
+
+# -- Time-of-use tariff ----------------------------------------------------
+# A charge that must happen tonight anyway may as well happen when the kWh is
+# cheap. The band is a wall-clock window, usually crossing midnight, and it is
+# the only thing in this module that knows about money.
+#
+# It never overrides the deadline: the window is consulted to decide *when* to
+# start, and if the energy does not fit inside it the charge starts before it
+# opens and pays the difference. A missed deadline costs a morning; a few kWh at
+# the day rate costs small change.
+CHEAP_BAND_START_HOUR = 22.0
+CHEAP_BAND_END_HOUR = 7.0
+
+
+def hours_until_band_open(
+    now_hour: float, start_hour: float, end_hour: float
+) -> float:
+    """Hours until the cheap band opens, or 0.0 if it is open now.
+
+    Hours are fractional, local, since midnight. A start later than the end means
+    the band crosses midnight, which is the normal shape for a night rate.
+    """
+    if start_hour == end_hour:
+        return 0.0  # degenerate: the whole day is cheap, so never wait
+    if start_hour < end_hour:
+        inside = start_hour <= now_hour < end_hour
+    else:
+        inside = now_hour >= start_hour or now_hour < end_hour
+    if inside:
+        return 0.0
+    return (start_hour - now_hour) % 24.0
+
+
+def plan_grid_deadline(
+    hours_until_deadline: float,
+    energy_needed_kwh: float,
+    voltage: float,
+    reference_current: float,
+    charger_min_current: float,
+    charger_max_current: float,
+    now_hour: Optional[float] = None,
+    band_start_hour: Optional[float] = None,
+    band_end_hour: Optional[float] = None,
+    pace_margin: float = 1.10,
+    hours_at_reference: Optional[float] = None,
+) -> Tuple[float, float, Optional[float], str]:
+    """Decide when the grid takes over a deadline charge, and at what current.
+
+    Two questions used to be answered in different places, by different rules,
+    and the answers disagreed: the planner decided *whether* the deadline was
+    urgent from a slack ratio, while only the deadline branch computed a current
+    that actually met it. Between the moment the slack latch fired and the moment
+    that branch opened, nobody raised the current and the car trickled at the
+    charger minimum while the display claimed it was keeping pace.
+
+    Both answers come from here, and the reference current is the axis:
+
+      * **The cheap band alone can do it at the reference current or less.**
+        Wait for the band, then charge at the pace the remaining window needs.
+        Nothing is gained by starting sooner and paying the day rate.
+      * **It cannot.** Then the overflow -- whatever the band cannot carry at the
+        reference current -- has to be charged before the band opens, and the
+        charge starts now. Spread over all the time left it asks the least
+        current, often well under the reference; the same kWh lands at the same
+        price either way, so the thinnest, gentlest version of that leg is the
+        right one. When the band opens the pace is recomputed and rises.
+      * **The overflow is too small to charge at all**, needing less than the
+        charger's minimum: then waiting is cheaper than running the charger at
+        its floor, and the band makes it up slightly above the reference.
+
+    The pace is recomputed every cycle, so falling behind raises it and the
+    margin is spent rather than banked. It is never the reference current for its
+    own sake: finishing hours early buys nothing, and on a small supply the lower
+    current is what keeps the charge clear of the contract limit.
+
+    With no band configured the rule is the original one: start as late as the
+    reference current allows, and pace to the deadline.
+
+    Args:
+        energy_needed_kwh: battery-side; charging losses are applied here.
+        reference_current: the comfortable rate the band's capacity is measured
+            against -- a yardstick, not a floor and not a ceiling.
+        hours_at_reference: how long the charge takes at `reference_current`,
+            from `calculate_charge_time_hours`. Pass it: that model knows about
+            charging losses and the taper near a full pack, and dividing energy
+            by power here instead would make the plan optimistic by the one
+            margin it cannot afford to be optimistic about -- it would start too
+            late. Falls back to the plain division when absent.
+
+    Returns:
+        (charge_now, pace_amps, hours_until_start, reason). `pace_amps` is the
+        current to command when starting -- now if `charge_now`, otherwise at
+        `hours_until_start` -- so a caller can say what it is waiting to do.
+    """
+    if energy_needed_kwh <= 0.0:
+        return False, 0.0, None, "obiettivo già raggiunto"
+    if voltage <= 0 or reference_current <= 0:
+        return True, charger_max_current, 0.0, (
+            "dati elettrici non validi, carico al massimo"
+        )
+
+    wall_kwh = energy_needed_kwh / CHARGING_EFFICIENCY
+    kw_per_amp = voltage / 1000.0
+
+    # The one duration everything else is measured against.
+    h_ref = hours_at_reference
+    if h_ref is None or h_ref <= 0.0:
+        h_ref = wall_kwh / (reference_current * kw_per_amp)
+    h_ref_safe = h_ref * pace_margin
+
+    def amps_over(hours: float) -> float:
+        """The current that finishes the charge in `hours`, with margin.
+
+        Scaled from the reference rather than recomputed from energy, so it
+        inherits whatever `hours_at_reference` knows about losses and taper.
+        """
+        if hours <= 0.0:
+            return charger_max_current
+        amps = reference_current * h_ref_safe / hours
+        return max(charger_min_current, min(amps, charger_max_current))
+
+    band_wait = None
+    if (
+        band_start_hour is not None
+        and band_end_hour is not None
+        and now_hour is not None
+    ):
+        band_wait = hours_until_band_open(now_hour, band_start_hour, band_end_hour)
+
+    # -- No tariff band: start as late as the reference current allows --------
+    if band_wait is None:
+        start_in = hours_until_deadline - h_ref_safe
+        if start_in <= 0.0:
+            pace = amps_over(hours_until_deadline)
+            return True, pace, 0.0, f"passo {pace:.0f}A per arrivare in orario"
+        pace = amps_over(hours_until_deadline - start_in)
+        return False, pace, start_in, (
+            f"posso partire fra {start_in:.1f}h a {pace:.0f}A e arrivare in orario"
+        )
+
+    # -- The band is open: pace what is left ---------------------------------
+    if band_wait <= 0.0:
+        horizon = hours_until_deadline
+        hours_to_close = (band_end_hour - now_hour) % 24.0
+        # Finishing inside the band is worth a little more current, but only when
+        # the band can carry the whole charge at the reference rate. Otherwise
+        # the deadline is the honest horizon.
+        if 0.0 < hours_to_close < horizon and h_ref_safe <= hours_to_close:
+            horizon = hours_to_close
+        pace = amps_over(horizon)
+        return True, pace, 0.0, f"fascia economica aperta, passo {pace:.0f}A"
+
+    # -- The band is still to come ------------------------------------------
+    band_hours = max(0.0, hours_until_deadline - band_wait)
+
+    # Can the band carry the whole charge at the reference current? The margin is
+    # on this side of the comparison, so the "band is enough" case really does
+    # stay at or below the reference instead of asking for 10% more than it.
+    if h_ref_safe <= band_hours:
+        pace = amps_over(band_hours)
+        return False, pace, band_wait, (
+            f"aspetto la fascia economica fra {band_wait:.1f}h: "
+            f"da allora {pace:.0f}A bastano per la scadenza"
+        )
+
+    # The hours of charging the band cannot absorb, and the current that fits
+    # them into the time left before it opens.
+    deficit_h = h_ref_safe - band_hours
+    pre_amps = reference_current * deficit_h / band_wait
+
+    if pre_amps < charger_min_current:
+        # Less than the charger can even deliver. Running it at its floor would
+        # buy day-rate energy to save a trickle; the band takes the difference.
+        pace = amps_over(band_hours)
+        return False, pace, band_wait, (
+            f"aspetto la fascia economica fra {band_wait:.1f}h: manca poco, "
+            f"meglio {pace:.0f}A in fascia che {charger_min_current:.0f}A adesso"
+        )
+
+    # Capped at the reference current: the leg before the band is the expensive
+    # one, so it carries no more than the baseline and the band -- which may
+    # then run above it -- takes the rest. Cheaper, and it is what makes the
+    # baseline a baseline rather than a target.
+    pre_amps = min(pre_amps, reference_current, charger_max_current)
+    return True, pre_amps, 0.0, (
+        f"{pre_amps:.0f}A adesso: la fascia da sola non basta, mi porto avanti "
+        f"{deficit_h:.1f}h di carica e dalle {band_start_hour:.0f} salgo"
+    )
 
 
 def is_charger_connected(charger_status: Optional[str]) -> bool:

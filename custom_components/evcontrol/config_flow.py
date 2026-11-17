@@ -215,6 +215,16 @@ def _auto_schema(d: dict) -> dict:
     return s
 
 
+def _tariff_schema(d: dict) -> dict:
+    s: dict = {}
+    # Off by default. On a flat tariff there is nothing to shift and delaying a
+    # charge would only surprise; whoever has two rates knows they have two.
+    _toggle(s, d, "cheap_band_enabled", False)
+    _slider(s, d, "cheap_band_start_hour", 22, 0, 23, 1, "h")
+    _slider(s, d, "cheap_band_end_hour", 7, 0, 23, 1, "h")
+    return s
+
+
 def _smart_schema(d: dict) -> dict:
     """The solar planner. The rule is three lines; most of this is set once.
 
@@ -289,6 +299,7 @@ _SECTIONS = [
     ("ev_vehicle",     "Veicolo elettrico",               _ev_vehicle_schema),
     ("schedule",       "Orari di ricarica",               _schedule_schema),
     ("auto",           "Modalita AUTO",                   _auto_schema),
+    ("tariff",         "Fascia oraria",                   _tariff_schema),
     ("smart",          "Ricarica intelligente",           _smart_schema),
     ("smart_forecast", "Previsione solare (Solcast)",     _smart_forecast_schema),
     ("control",        "Rete e aggiornamento",            _control_schema),

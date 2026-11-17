@@ -205,7 +205,13 @@ def test_calculate_available_current_auto():
         automatic_charge_current=15.0,
     )
     print(f"AUTO PHASE 2 (EV SOC 60%, 4h left): {current_a}A - {msg}")
-    assert current_a == 15.0, "Should charge when running out of time"
+    # 15 A was the old answer, and it was wrong: 45 kWh from 60% to 100% is 20 kWh
+    # at the wall, which 15 A cannot deliver in four hours. The current now comes
+    # from the deadline, so it is whatever actually arrives on time.
+    needed = 45.0 * 0.40 / 0.90 / 4.0 * 1000.0 / 230.0
+    assert current_a >= needed - 0.5, (
+        "Should charge fast enough to arrive: %.1fA < %.1fA needed" % (current_a, needed)
+    )
     
     print("[OK] All AUTO mode tests passed!")
 
@@ -249,7 +255,13 @@ def test_calculate_available_current_auto_eco():
         automatic_charge_current=15.0,
     )
     print(f"AUTO-ECO time critical no solar: {current_a}A - {msg}")
-    assert current_a == 15.0, "Should charge from grid when critical and no solar"
+    # Same correction as the AUTO case above: a four-hour deadline on 20 kWh
+    # is not a 15 A job, and asserting 15 A was asserting the car arrives late.
+    needed = 45.0 * 0.40 / 0.90 / 4.0 * 1000.0 / 230.0
+    assert current_a >= needed - 0.5, (
+        "Should charge fast enough to arrive: %.1fA < %.1fA needed"
+        % (current_a, needed)
+    )
     
     # Test 3: Not critical, no solar
     current_a, msg = calculate_available_current(

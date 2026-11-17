@@ -14,6 +14,7 @@ from .helpers import (
     calculate_surplus,
     get_available_battery_power,
     calculate_available_current,
+    plan_grid_deadline,
     apply_eco_timer,
     apply_auto_timer,
     calculate_charge_time_hours,
@@ -441,6 +442,20 @@ class EVControlCoordinator(DataUpdateCoordinator):
             smart_cfg = SmartConfig.from_config({**self.config, **self._smart_overrides()})
             use_smart = smart_cfg.enabled and current_mode in ("eco", "auto", "auto-eco")
 
+            # Time-of-use band. Off by default: on a flat tariff there is
+            # nothing to optimise and delaying a charge would only surprise.
+            band_enabled = bool(self.config.get("cheap_band_enabled", False))
+            band_start_hour = (
+                float(self.config.get("cheap_band_start_hour", 22))
+                if band_enabled else None
+            )
+            band_end_hour = (
+                float(self.config.get("cheap_band_end_hour", 7))
+                if band_enabled else None
+            )
+            _now = datetime.now()
+            now_hour = _now.hour + _now.minute / 60.0 + _now.second / 3600.0
+
             # Calculate available current based on mode
             available_current, debug_message = calculate_available_current(
                 surplus,
@@ -467,6 +482,9 @@ class EVControlCoordinator(DataUpdateCoordinator):
                 actual_battery_charge_w=actual_battery_charge_w,
                 target_soc=auto_target_soc,
                 charger_floor_current=self.config.get("charger_min_current", 6),
+                now_hour=now_hour,
+                band_start_hour=band_start_hour,
+                band_end_hour=band_end_hour,
             )
 
             # Apply ECO mode timer (10-minute hysteresis for cloud protection)
@@ -498,6 +516,11 @@ class EVControlCoordinator(DataUpdateCoordinator):
             # critical.
             legacy_is_critical = False
             legacy_critical_reason = ""
+            # The deadline plan, when there is a deadline to plan for.
+            deadline_charge_now = False
+            deadline_pace_a = 0.0
+            deadline_start_in_h = None
+            deadline_why = ""
             if current_mode in ["auto", "auto-eco"] and seconds_until_auto_target is not None and ev_soc is not None:
                 time_until_target_hours = seconds_until_auto_target / 3600.0
                 time_needed_hours = calculate_charge_time_hours(
@@ -510,16 +533,49 @@ class EVControlCoordinator(DataUpdateCoordinator):
                 # this, the grace window would force grid charging on a car that has
                 # nothing left to take.
                 target_reached = ev_soc >= auto_target_soc - 0.5
+
+                # The same plan the current calculation uses, so that "is the
+                # deadline urgent" and "what current meets it" can no longer give
+                # different answers. They used to: the planner latched CRITICAL on
+                # a slack ratio while only the deadline branch computed a pace, and
+                # between the two the car sat at the charger minimum for hours.
+                # The reference duration the plan is built on: charging losses and the
+                # taper near a full pack, but not calculate_charge_time_hours' home-battery
+                # fudge. That factor inflates the *car's* charge time because the *house*
+                # battery is low -- a stand-in for "less power available" that the grid cap
+                # now accounts for exactly, so counting it here would count it twice. It is
+                # worth 16% at a 19% house battery, which is the difference between starting
+                # at 22:00 and starting two hours early for nothing.
+                plan_hours_at_reference = calculate_charge_time_hours(
+                    ev_soc, auto_target_soc, self.ev_battery_capacity_kwh,
+                    self.config.get("automatic_charge_current", 15), voltage, 100.0
+                )
+                (
+                    deadline_charge_now,
+                    deadline_pace_a,
+                    deadline_start_in_h,
+                    deadline_why,
+                ) = plan_grid_deadline(
+                    hours_until_deadline=time_until_target_hours,
+                    energy_needed_kwh=self.ev_battery_capacity_kwh
+                    * (max(0.0, auto_target_soc - ev_soc) / 100.0),
+                    voltage=voltage,
+                    reference_current=self.config.get("automatic_charge_current", 15),
+                    charger_min_current=self.config.get("charger_min_current", 6),
+                    charger_max_current=self.config.get("charger_max_current", 32),
+                    now_hour=now_hour,
+                    band_start_hour=band_start_hour,
+                    band_end_hour=band_end_hour,
+                    hours_at_reference=plan_hours_at_reference,
+                )
                 # Target passed (grace window): seconds_until_auto_target == 60 → always critical
                 legacy_is_critical = (not target_reached) and (
-                    (seconds_until_auto_target <= 60)
-                    or (time_until_target_hours <= (time_needed_hours * 1.10))
+                    (seconds_until_auto_target <= 60) or deadline_charge_now
                 )
                 if legacy_is_critical:
                     legacy_critical_reason = (
-                        f"deadline: {time_until_target_hours:.1f}h disponibili, "
-                        f"{time_needed_hours:.1f}h necessarie +10% "
-                        f"per arrivare al {auto_target_soc:.0f}%"
+                        f"scadenza: {deadline_why} "
+                        f"(per il {auto_target_soc:.0f}% entro {time_until_target_hours:.1f}h)"
                     )
             # AUTO phase 1 keeps its original meaning: below the SOC threshold the car
             # gets a guaranteed buffer regardless of sun. When the deadline is already
@@ -616,6 +672,11 @@ class EVControlCoordinator(DataUpdateCoordinator):
                     critical_target_amps=available_current if current_mode in ("auto", "auto-eco") else None,
                     force_critical=legacy_is_critical,
                     force_reason=legacy_critical_reason,
+                    # A pause with a known end is not the contactor cycling:
+                    # it is the plan waiting for the cheap band.
+                    deadline_waiting=(
+                        deadline_start_in_h is not None and not deadline_charge_now
+                    ),
                 )
                 available_current = smart_decision.amps
                 debug_message = smart_decision.reason
@@ -631,6 +692,12 @@ class EVControlCoordinator(DataUpdateCoordinator):
                     target_label=target_time_str,
                     reference_current=self.config.get("automatic_charge_current", 15),
                     phase1_soc=phase1_soc if auto_phase1_active else None,
+                    # So the card quotes the hour the charge will actually
+                    # start, not the last hour the deadline would tolerate.
+                    plan_start_at=(
+                        datetime.now() + timedelta(hours=deadline_start_in_h)
+                        if deadline_start_in_h else None
+                    ),
                 )
                 _LOGGER.debug(
                     f"Smart planner [{smart_decision.state_name}/{smart_decision.urgency}]: "
@@ -933,6 +1000,14 @@ class EVControlCoordinator(DataUpdateCoordinator):
                 "grid_power_limit": grid_max_power_kw,
                 "grid_safety_margin_w": grid_margin_w,
                 "grid_cap_a": round(grid_cap_a, 1),
+                "fascia_economica": (
+                    f"{band_start_hour:.0f}-{band_end_hour:.0f}" if band_enabled else "off"
+                ),
+                "piano_scadenza": deadline_why,
+                "passo_scadenza_a": round(deadline_pace_a, 1),
+                "parto_fra_h": (
+                    round(deadline_start_in_h, 2) if deadline_start_in_h is not None else None
+                ),
                 "grid_headroom_w": round(max(0.0, import_headroom_w)),
                 "battery_reservation_power": current_battery_reservation,
                 "pv_power": pv_power,

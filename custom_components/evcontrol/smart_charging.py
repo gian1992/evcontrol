@@ -759,6 +759,7 @@ def evaluate_smart_charge(
     critical_target_amps: Optional[float] = None,
     force_critical: bool = False,
     force_reason: str = "",
+    deadline_waiting: bool = False,
 ) -> SmartDecision:
     """Run one control cycle and return the current to command.
 
@@ -771,6 +772,11 @@ def evaluate_smart_charge(
     planner would compute on its own. It exists so the pre-existing deadline and
     AUTO phase-1 rules keep exactly the behaviour they had before this planner was
     introduced: the planner may make charging start *earlier*, never later.
+
+    `deadline_waiting` says the deadline plan has a start time and it has not
+    arrived -- it is waiting for the cheap tariff band. That is the one case where
+    letting go of a critical charge is right rather than reckless, so it releases
+    the anti-cycling latch: the restart is scheduled, not a bounce.
     """
     state.roll_day(now)
     # The battery reading is evidence of capability only when the battery was not
@@ -863,6 +869,8 @@ def evaluate_smart_charge(
             released = "obiettivo raggiunto"
         elif phase == SUN_DAY:
             released = "e' tornato il sole"
+        elif deadline_waiting:
+            released = "il piano aspetta la fascia economica"
         elif slack >= cfg.untouchable_slack:
             released = f"slack risalito a {slack:.1f}"
         if released:

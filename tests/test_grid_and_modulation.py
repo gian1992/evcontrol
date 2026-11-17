@@ -79,25 +79,38 @@ def auto_eco(**over):
 
 
 def test_modulated_current_is_not_floored_by_normal_mode():
-    """The deadline wanted 13 A. NORMAL's 23 A base must not raise it."""
+    """The deadline sets the current. NORMAL's 23 A base must not raise it.
+
+    The night this guards against charged at 23 A because NORMAL's base leaked
+    into the deadline floor, finished hours early, and cycled the contactor eight
+    times. Two things have to hold for that not to recur: with time in hand the
+    car does not charge at all, and once it must, the current comes from the pace
+    the deadline needs -- never from the base, never from the charger's floor.
+    """
     print("\n=== Corrente modulata, non la base di NORMAL ===")
 
     energy = CAPACITY * (TARGET_SOC - EV_SOC) / 100.0
-    expected = energy / HOURS_LEFT / 0.90 * 1000.0 / VOLTAGE
-    print("  serve: %.1f kWh in %.2f h -> %.1f A" % (energy, HOURS_LEFT, expected))
+    naive = energy / HOURS_LEFT / 0.90 * 1000.0 / VOLTAGE
+    print("  serve: %.1f kWh in %.2f h -> almeno %.1f A" % (energy, HOURS_LEFT, naive))
 
+    # With six hours for a five-hour charge there is no reason to start yet.
     amps, reason = auto_eco(charger_floor_current=CHARGER_MIN)
-    print("  esito: %.1fA" % amps)
-    assert abs(amps - expected) < 1.5, (amps, expected, reason)
-    assert amps < 16.0, "23 A era il bug: %r" % (reason,)
+    print("  con %.1f h di margine: %.1fA" % (HOURS_LEFT, amps))
+    assert amps == 0.0, "doveva aspettare, non partire: %r" % (reason,)
+    assert amps != BASE_CURRENT, reason
 
-    # The night itself, pinned so the regression is unmistakable: no floor given,
-    # so it falls back to NORMAL's base, and the old 500 W margin left the grid
-    # cap at 23 A too — both roads led to the same wrong answer.
-    old_amps, _ = auto_eco(safety_margin_watts=500.0)
-    assert old_amps == 23.0, old_amps
-    print("  com'era quella notte: %.0fA" % old_amps)
-    print("[OK] la modulazione sopravvive alla manopola di NORMAL")
+    # Tighten the deadline until it must charge: now the current is the pace.
+    tight_h = 4.5
+    amps, reason = auto_eco(
+        charger_floor_current=CHARGER_MIN,
+        seconds_until_auto_target=int(tight_h * 3600),
+    )
+    needed = energy / tight_h / 0.90 * 1000.0 / VOLTAGE
+    print("  con %.1f h: %.1fA (il minimo per farcela e' %.1fA)" % (tight_h, amps, needed))
+    assert amps >= needed - 0.5, "non ce la fa: %.1fA < %.1fA\n%s" % (amps, needed, reason)
+    assert amps < BASE_CURRENT, "e' tornata la base di NORMAL: %r" % (reason,)
+    assert amps > CHARGER_MIN, "e' il pavimento del caricatore: %r" % (reason,)
+    print("[OK] la corrente viene dalla scadenza, non dalla base ne' dal minimo")
 
 
 def test_current_tracks_how_much_is_actually_missing():
@@ -377,6 +390,8 @@ if __name__ == "__main__":
     print("=" * 62)
 
     test_modulated_current_is_not_floored_by_normal_mode()
+    test_current_tracks_how_much_is_actually_missing()
+    test_grid_cap_absorbs_a_water_heater()
     test_current_tracks_how_much_is_actually_missing()
     test_grid_cap_absorbs_a_water_heater()
     test_grid_cap_counts_imports_not_consumption()

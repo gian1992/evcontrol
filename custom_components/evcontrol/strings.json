@@ -129,6 +129,15 @@
           "grid_safety_margin_w": "Reserve left unused on the supply (W). Head kept free so a load that starts without warning — a water heater, an oven — lands inside the contract instead of outside it. The car is the only load here that can be throttled, so the whole reserve comes out of its share: at a 6 kW limit, 1500 W leaves the car up to 4.5 kW minus whatever the house is already drawing. Set it to the largest appliance that can start on its own.",
           "refresh_rate": "How often everything is recalculated (s). Every planner confirmation time is counted in multiples of this value."
         }
+      },
+      "tariff": {
+        "title": "Time-of-use tariff",
+        "description": "Shift a deadline charge into the cheap hours. The deadline always wins: if the band cannot carry the charge on its own, charging starts before it opens and pays the difference.",
+        "data": {
+          "cheap_band_enabled": "Use a cheap-rate band",
+          "cheap_band_start_hour": "Band starts at (hour)",
+          "cheap_band_end_hour": "Band ends at (hour)"
+        }
       }
     },
     "abort": {
@@ -267,6 +276,15 @@
           "grid_voltage": "Nominal grid voltage (V). Normally 230 V single-phase.",
           "grid_safety_margin_w": "Reserve left unused on the supply (W). Head kept free so a load that starts without warning — a water heater, an oven — lands inside the contract instead of outside it. The car is the only load here that can be throttled, so the whole reserve comes out of its share: at a 6 kW limit, 1500 W leaves the car up to 4.5 kW minus whatever the house is already drawing. Set it to the largest appliance that can start on its own.",
           "refresh_rate": "How often everything is recalculated (s). Every planner confirmation time is counted in multiples of this value."
+        }
+      },
+      "tariff": {
+        "title": "Time-of-use tariff",
+        "description": "Shift a deadline charge into the cheap hours. The deadline always wins: if the band cannot carry the charge on its own, charging starts before it opens and pays the difference.",
+        "data": {
+          "cheap_band_enabled": "Use a cheap-rate band",
+          "cheap_band_start_hour": "Band starts at (hour)",
+          "cheap_band_end_hour": "Band ends at (hour)"
         }
       }
     },

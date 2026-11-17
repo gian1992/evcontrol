@@ -313,6 +313,7 @@ def _describe_outlook(
     reference_current: float,
     charging_enabled: bool,
     phase1_soc: Optional[float] = None,
+    plan_start_at: Optional[datetime] = None,
 ) -> tuple:
     """Return (outlook, detail, grid_fallback_at, full_at, extra_attributes)."""
     volts = max(signals.voltage, 1.0)
@@ -366,6 +367,10 @@ def _describe_outlook(
     # The reassuring number: the last moment at which falling back to the grid
     # still gets the car full by the deadline.
     grid_fallback_at = target_at - timedelta(hours=hours_needed_margin)
+    # The last moment the deadline allows, unless the plan means to start before
+    # it. Earlier is the honest answer: that is the one that will happen.
+    if plan_start_at is not None and plan_start_at < grid_fallback_at:
+        grid_fallback_at = plan_start_at
     when = _quando(target_at, now)
 
     extra.update({
@@ -440,11 +445,17 @@ def build_status(
     target_label: Optional[str] = None,
     reference_current: float = 15.0,
     phase1_soc: Optional[float] = None,
+    plan_start_at: Optional[datetime] = None,
 ) -> ChargeStatus:
     """Assemble the plain-language status from the planner's decision.
 
     `phase1_soc` is the AUTO phase-1 threshold when that rule, and not the
     deadline, is what is forcing the charge; None otherwise.
+
+    `plan_start_at` is when the deadline plan intends to take the grid, which on
+    a two-rate tariff is when the cheap band opens rather than the last moment
+    the deadline allows. Without it the status quotes the last moment, and the
+    card tells the owner a time the charge will not wait for.
     """
     try:
         headline, detail = _describe_action(
@@ -454,6 +465,7 @@ def build_status(
         outlook, outlook_detail, grid_at, full_at, extra = _describe_outlook(
             now, decision, signals, need, cfg, target_label, reference_current,
             charging_enabled, phase1_soc=phase1_soc,
+            plan_start_at=plan_start_at,
         )
     except Exception as err:  # a status sensor must never break the control loop
         _LOGGER.exception("Could not build status text: %s", err)
