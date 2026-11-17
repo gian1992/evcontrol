@@ -66,6 +66,33 @@ La pianificazione è modificabile in tre modi, che scrivono tutti gli stessi val
 - con i servizi `evcontrol.set_schedule` e `evcontrol.clear_schedule`
 - dalla card Oikos, che ha un popup apposito (vedi sotto)
 
+### Fascia oraria
+
+Chi ha due tariffe può dire all'integrazione quando l'energia costa meno, e la carica
+a scadenza si sposta dentro quella finestra. Di default è spenta: su tariffa unica non
+c'è niente da spostare e ritardare una carica sarebbe solo una sorpresa.
+
+La corrente di riferimento della modalità AUTO (15 A di default) è il metro di misura:
+
+- **se la fascia da sola basta** a quella corrente o meno, si aspetta che apra e si
+  carica al passo che la finestra richiede. Nel caso tipico — 22 kWh da recuperare
+  fra le 22:00 e le 07:00 — sono 14 A, e non c'è ragione di partire prima pagando
+  la fascia cara.
+- **se non basta**, l'ammanco va caricato prima che la fascia apra, e si parte subito:
+  spalmato su tutto il tempo disponibile chiede la corrente più bassa possibile. Quel
+  tratto è limitato al riferimento, perché è quello caro; quando la fascia apre il
+  passo viene ricalcolato e sale.
+- **se l'ammanco è minimo**, sotto il minimo che il caricatore sa erogare, si aspetta
+  comunque: accendere a 6 A per recuperare un filo costerebbe più di quanto risparmi.
+
+La scadenza viene sempre prima della tariffa. Il passo è ricalcolato a ogni ciclo,
+quindi restare indietro lo alza e arrivare in anticipo lo abbassa.
+
+Si imposta in *Configura → Fascia oraria*. La finestra può attraversare la mezzanotte,
+che è la forma normale per una tariffa notturna. Le fasce del fine settimana non sono
+modellate: si imposta la finestra feriale e nei giorni in cui la tariffa è bassa tutto
+il giorno il piano resta valido, solo meno aggressivo del necessario.
+
 ## Installazione
 
 ### HACS

@@ -66,6 +66,33 @@ The schedule is editable three ways, all writing the same values:
 - the `evcontrol.set_schedule` / `evcontrol.clear_schedule` services
 - the Oikos dashboard card, which has a popup for it (see below)
 
+### Time-of-use tariff
+
+If you have two rates, you can tell the integration when energy is cheaper and a
+deadline charge moves inside that window. Off by default: on a flat tariff there is
+nothing to shift and delaying a charge would only surprise.
+
+AUTO's reference current (15 A by default) is the yardstick:
+
+- **if the band alone can carry the charge** at that current or less, wait for it to
+  open and charge at the pace the window needs. In the typical case -- 22 kWh to make
+  up between 22:00 and 07:00 -- that is 14 A, and there is no reason to start earlier
+  at the day rate.
+- **if it cannot**, the overflow has to be charged before the band opens, and charging
+  starts now: spread over all the time available it asks the lowest current it can.
+  That leg is capped at the reference current, because it is the expensive one; when
+  the band opens the pace is recomputed and rises.
+- **if the overflow is tiny**, below what the charger can even deliver, it waits
+  anyway: running at 6 A to make up a trickle costs more than it saves.
+
+The deadline always outranks the tariff. The pace is recomputed every cycle, so
+falling behind raises it and running ahead lowers it.
+
+Set it in *Configure → Time-of-use tariff*. The window may cross midnight, which is
+the normal shape for a night rate. Weekend bands are not modelled: set the weekday
+window, and on days when the low rate runs all day the plan still holds -- it is
+simply less aggressive than it could be.
+
 ## Installation
 
 ### HACS
