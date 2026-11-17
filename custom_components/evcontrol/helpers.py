@@ -797,8 +797,14 @@ def plan_grid_deadline(
         and now_hour is not None
     ):
         band_wait = hours_until_band_open(now_hour, band_start_hour, band_end_hour)
+        # A band that opens at or after the deadline cannot help this charge, and
+        # pretending otherwise is worse than ignoring it: the plan would hold the
+        # expensive leg down to the reference current and promise to make up the
+        # rest "from 22:00", which is after the car was supposed to be ready.
+        if band_wait >= hours_until_deadline:
+            band_wait = None
 
-    # -- No tariff band: start as late as the reference current allows --------
+    # -- No tariff band, or none that arrives in time ------------------------
     if band_wait is None:
         start_in = hours_until_deadline - h_ref_safe
         if start_in <= 0.0:
