@@ -1,5 +1,61 @@
 # EV Control - Changelog
 
+## Version 0.8.1
+
+### Fixed
+- **"Sblocca adesso" left the daily stop budget standing.** Pressing it with the
+  budget spent changed nothing: the card kept saying "Riprendo domani". The
+  budget had been excluded deliberately, on the reasoning that it is a policy
+  rather than a wait — a distinction that does not survive reading the sentence
+  it produces. It is now forgiven too. The count is *forgiven*, not reset, so
+  `sensor.ev_control_smart_stops_today` keeps telling the truth about the day.
+  The budget still binds the planner on its own: nothing automatic can spend it.
+- **A tariff band opening after the deadline was still used.** Plugged in at
+  19:00 for a 21:00 deadline, the plan held the expensive leg down to the
+  reference current and promised to make up the rest "from 22:00" — an hour
+  after the car was supposed to be ready. Such a band is now ignored.
+
+## Version 0.8.0
+
+### Added
+- **Time-of-use tariff band.** A deadline charge moves into the cheap hours.
+  The reference current is the yardstick: if the band can carry the charge at
+  that rate or less, the charge waits for the band and paces itself inside it;
+  if it cannot, the overflow is charged before the band opens, spread over all
+  the time available so it asks the least current, and capped at the reference
+  because that leg is the expensive one. Off by default — on a flat tariff
+  there is nothing to shift. Set it in *Configure → Time-of-use tariff*.
+
+### Fixed
+- **A deadline charge could sit at the charger's minimum for hours.** Two
+  definitions of "critical" were answering different halves of the same
+  question: the planner latched on a slack ratio and held the contactor closed,
+  while only the legacy deadline branch computed a current that met the
+  deadline — and it did not open until much later. Between the two, nothing
+  raised the current. On the night of 17/11 the car ran at 6 A with 22 kWh to
+  go and a 07:00 deadline, while the display claimed it was keeping pace; at
+  that rate it would have arrived at 13:19. The two tests are in fact the same
+  inequality, so they are now one function and both callers read it.
+- **The AUTO phase-1 SOC threshold entity did nothing.** `helpers.py` tested
+  `ev_soc < 50.0` as a literal in three places and ignored the parameter it was
+  passed, whose default was 30 rather than 50. Anyone whose threshold happened
+  to be 50 could not tell.
+- **The deadline plan no longer inflates the car's charge time because the
+  *house* battery is low.** That factor stood in for "less power available",
+  which the grid cap now accounts for exactly; counting it twice was worth two
+  hours of starting early for nothing. Charging losses and the taper near a
+  full pack are still counted.
+- **The card quoted the wrong hour.** It showed the last moment the deadline
+  would tolerate as the hour it would attach to the grid. It now shows the hour
+  the plan will actually start.
+
+### Changed
+- The current that meets a deadline is computed from remaining energy and
+  remaining time rather than from the measured charge speed, so the sanity
+  check that guarded against a stale reading demanding 48 A is gone with it.
+  It is recomputed every cycle: falling behind raises it, running ahead lowers
+  it.
+
 ## Version 0.7.3
 
 Naming and documentation only; no behaviour changes.

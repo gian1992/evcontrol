@@ -1087,6 +1087,7 @@ class EVControlCoordinator(DataUpdateCoordinator):
                     or 0 < self.smart_state.start_dwell_s < int(
                         self.config.get("smart_start_dwell_s", 180)
                     )
+                    or self.smart_state.stops_today > self.smart_state.stops_forgiven
                     or self.eco_timer_active
                     or self.auto_timer_active
                 ),
@@ -1437,13 +1438,20 @@ class EVControlCoordinator(DataUpdateCoordinator):
         - the start confirmation dwell (`smart_start_dwell_s`), which waits to see
           whether a surplus is real before closing the contactor.
 
-        This clears both. It deliberately does *not* start charging, raise the
-        current, or touch the mode: if there is no surplus and no deadline
+It also forgives the daily stop budget (`smart_max_stops_per_day`),
+        which it used not to, on the reasoning that a budget is a policy rather
+        than a wait. The screen it produces says "Riprendo domani", which is a
+        wait to anyone reading it, so the button was leaving the one blocker the
+        owner most wanted gone. The budget exists to stop the *planner* cycling
+        the contactor on its own; a person pressing a button is accepting that
+        cost deliberately, and that is the case it was never meant to argue with.
+
+        This clears all three. It deliberately does *not* start charging, raise
+        the current, or touch the mode: if there is no surplus and no deadline
         pressure, the planner will simply decide not to start, and say so. What it
         removes is the waiting, not the judgement.
 
-        Left alone on purpose, because they are not waits:
-        - the daily stop budget (`smart_max_stops_per_day`),
+        Left alone on purpose, because they are physical rather than self-imposed:
         - the home-battery floor (`solar_min_soc`),
         - the sunset guard.
 
@@ -1463,6 +1471,12 @@ class EVControlCoordinator(DataUpdateCoordinator):
         if self.smart_state.start_dwell_s < dwell_target:
             self.smart_state.start_dwell_s = float(dwell_target)
             cleared.append("conferma di avvio")
+
+        # Forgiven, not zeroed: the sensor and the logs keep the real count.
+        unforgiven = self.smart_state.stops_today - self.smart_state.stops_forgiven
+        if unforgiven > 0:
+            self.smart_state.stops_forgiven = self.smart_state.stops_today
+            cleared.append(f"budget stop ({unforgiven} perdonati oggi)")
 
         # The legacy timers only run with the smart planner switched off, but a
         # button called "unblock now" that quietly ignored them there would be

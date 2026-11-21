@@ -223,7 +223,8 @@ def _describe_action(
         reason = decision.reason
         if "budget stop" in reason:
             why = (f"Ho già fatto {decision.stops_today} stacca/attacca oggi, che è il massimo "
-                   f"che mi sono dato. Riprendo domani, o subito se la scadenza diventa critica.")
+                   f"che mi sono dato. Riprendo domani, o subito se la scadenza diventa "
+                   f"critica, o adesso se premi Sblocca.")
         elif "pausa minima" in reason:
             # The time itself is added by `_when_start`, which owns every
             # "and when does it start" sentence; saying it twice reads badly.

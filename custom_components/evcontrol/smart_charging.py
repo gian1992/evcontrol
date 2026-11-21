@@ -339,6 +339,10 @@ class SmartState:
     last_stop: Optional[datetime] = None
     critical_latched: bool = False
     stops_today: int = 0
+    # Stops the owner has waived with the unblock button. Kept apart from
+    # `stops_today` so the count stays honest for the sensor and the logs while
+    # the budget check reads only what has not been forgiven.
+    stops_forgiven: int = 0
     stops_day: Optional[date] = None
     headroom_ema_w: Optional[float] = None
     last_amps: float = 0.0
@@ -352,6 +356,7 @@ class SmartState:
         if self.stops_day != today:
             self.stops_day = today
             self.stops_today = 0
+            self.stops_forgiven = 0
 
     def note_battery(
         self, now: datetime, watts: float, window_min: int, trustworthy: bool
@@ -927,9 +932,10 @@ def evaluate_smart_charge(
         blockers = []
 
         if not is_critical:
-            if state.stops_today >= cfg.max_stops_per_day:
+            stops_counted = max(0, state.stops_today - state.stops_forgiven)
+            if stops_counted >= cfg.max_stops_per_day:
                 blockers.append(
-                    f"budget stop esaurito ({state.stops_today}/{cfg.max_stops_per_day} oggi)"
+                    f"budget stop esaurito ({stops_counted}/{cfg.max_stops_per_day} oggi)"
                 )
             if state.last_stop is not None:
                 elapsed = (now - state.last_stop).total_seconds() / 60.0

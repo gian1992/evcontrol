@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Tests for "unblock now".
 
-The button's whole claim is a narrow one: it removes the two waits the planner
-imposes on itself, and nothing else. So these tests check both halves of that —
-that a blocked start really does go through afterwards, and that a start the
-planner was declining on the merits still gets declined.
+The button's claim is a bounded one: it removes the waits the planner imposes on
+itself, and nothing else. So these tests check both halves of that — that a
+blocked start really does go through afterwards, and that a start the planner was
+declining on the merits still gets declined.
+
+The daily stop budget used to be excluded, on the reasoning that a budget is a
+policy rather than a wait. The screen it produces says "Riprendo domani", which
+is a wait to whoever reads it, so the button was leaving standing the one blocker
+its owner most wanted gone. It is now forgiven too, and the test below says so
+instead of the opposite.
 """
 
 from datetime import datetime, timedelta
@@ -76,6 +82,10 @@ def unblock(state, cfg=None):
     if state.start_dwell_s < cfg.start_dwell_s:
         state.start_dwell_s = float(cfg.start_dwell_s)
         cleared.append("conferma di avvio")
+    unforgiven = state.stops_today - state.stops_forgiven
+    if unforgiven > 0:
+        state.stops_forgiven = state.stops_today
+        cleared.append("budget stop (%d perdonati oggi)" % unforgiven)
     return cleared
 
 
@@ -145,21 +155,74 @@ def test_unblock_is_honest_when_there_is_nothing_to_do():
     print("[OK] nessun timer attivo -> nessuna azione dichiarata")
 
 
-def test_stop_budget_is_not_bypassed():
-    """Explicitly out of scope: the daily budget is a limit, not a wait."""
-    print("\n=== Il budget di stop resta ===")
+def test_unblock_forgives_the_stop_budget():
+    """The case from the card: three stops used, sun up, start still refused.
+
+    This asserted the opposite until someone pressed the button and watched
+    "Riprendo domani" stay on screen. The budget is there to stop the planner
+    cycling the contactor on its own; a person pressing a button is accepting
+    that cost on purpose.
+    """
+    print("\n=== Lo sblocco perdona il budget di stop ===")
 
     cfg = config()
     state = SmartState()
     state.stops_today = cfg.max_stops_per_day
     state.stops_day = NOON.date()
 
+    # Before: refused, and the budget is why.
+    d = run(sunny(), state)
+    assert d.state_name == STATE_BLOCKED, d.state_name
+    assert "budget stop" in d.reason, d.reason
+    print("  prima  : %s" % d.reason[:78])
+
+    cleared = unblock(state)
+    assert any("budget stop" in c for c in cleared), cleared
+
+    d = run(sunny(), state)
+    assert d.state_name != STATE_BLOCKED, d.reason
+    assert d.amps > 0, d.reason
+    print("  sblocco: %s" % ", ".join(cleared))
+    print("  dopo   : %s a %.0fA" % (d.state_name, d.amps))
+
+    # The count itself stays truthful -- the sensor must not lie about the day.
+    assert state.stops_today == cfg.max_stops_per_day, state.stops_today
+    print("  stops_today resta %d (perdonati, non azzerati)" % state.stops_today)
+    print("[OK] il pulsante toglie il blocco senza falsificare il conteggio")
+
+
+def test_forgiveness_does_not_outlive_the_day():
+    """Tomorrow starts with a full budget and nothing forgiven."""
+    print("\n=== Il perdono non sopravvive al giorno ===")
+
+    cfg = config()
+    state = SmartState()
+    state.stops_today = cfg.max_stops_per_day
+    state.stops_day = NOON.date()
     unblock(state)
+    assert state.stops_forgiven == cfg.max_stops_per_day
+
+    state.roll_day(NOON + timedelta(days=1))
+    print("  domani : stops_today=%d, perdonati=%d"
+          % (state.stops_today, state.stops_forgiven))
+    assert state.stops_today == 0 and state.stops_forgiven == 0
+    print("[OK] si riparte da zero su entrambi")
+
+
+def test_budget_still_binds_the_planner_on_its_own():
+    """Without the button, the budget does exactly what it always did."""
+    print("\n=== Senza il pulsante il budget tiene ===")
+
+    cfg = config()
+    state = SmartState()
+    state.stops_today = cfg.max_stops_per_day
+    state.stops_day = NOON.date()
+
     d = run(sunny(), state)
     assert d.state_name == STATE_BLOCKED, d.state_name
     assert "budget stop" in d.reason, d.reason
     print("  esito  : %s" % d.reason[:78])
-    print("[OK] lo sblocco non tocca il budget giornaliero, come dichiarato")
+    print("[OK] il budget non si perdona da solo")
 
 
 if __name__ == "__main__":
@@ -171,7 +234,9 @@ if __name__ == "__main__":
     test_unblock_does_not_start_without_sun()
     test_unblock_skips_the_start_dwell()
     test_unblock_is_honest_when_there_is_nothing_to_do()
-    test_stop_budget_is_not_bypassed()
+    test_unblock_forgives_the_stop_budget()
+    test_forgiveness_does_not_outlive_the_day()
+    test_budget_still_binds_the_planner_on_its_own()
 
     print("\n" + "=" * 60)
     print("[OK] ALL UNBLOCK TESTS PASSED!")
