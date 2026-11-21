@@ -804,64 +804,88 @@ def plan_grid_deadline(
         if band_wait >= hours_until_deadline:
             band_wait = None
 
-    # -- No tariff band, or none that arrives in time ------------------------
-    if band_wait is None:
-        start_in = hours_until_deadline - h_ref_safe
-        if start_in <= 0.0:
-            pace = amps_over(hours_until_deadline)
-            return True, pace, 0.0, f"passo {pace:.0f}A per arrivare in orario"
-        pace = amps_over(hours_until_deadline - start_in)
-        return False, pace, start_in, (
-            f"posso partire fra {start_in:.1f}h a {pace:.0f}A e arrivare in orario"
-        )
+    # -- When to start ------------------------------------------------------
+    # The latest start that still finishes comfortably at the reference current.
+    # Negative means the car is already behind and should be charging.
+    latest_start_in = hours_until_deadline - h_ref_safe
 
-    # -- The band is open: pace what is left ---------------------------------
-    if band_wait <= 0.0:
+    start_in = max(0.0, latest_start_in)
+    waiting_for_band = False
+    if band_wait is not None and latest_start_in > 0.0 and band_wait <= latest_start_in:
+        # The band repeats every night, so there may be several openings before
+        # the charge has to begin. Take the *last* one that still fits: cheap
+        # hours are cheap on any night, and the later the start the more chance
+        # the sun gets to make the charge unnecessary. Taking the first opening
+        # instead is what made a Saturday night buy energy for a Wednesday
+        # deadline.
+        nights = int((latest_start_in - band_wait) / 24.0)
+        start_in = band_wait + 24.0 * nights
+        waiting_for_band = True
+
+    # -- Starting now -------------------------------------------------------
+    if start_in <= 0.0:
+        if band_wait is not None and band_wait > 0.0:
+            # Behind schedule with the band still to come. Only the hours the
+            # band can really carry count -- not the daylight between nights.
+            band_len = (band_end_hour - band_start_hour) % 24.0 or 24.0
+            band_hours = max(0.0, min(hours_until_deadline - band_wait, band_len))
+            deficit_h = h_ref_safe - band_hours
+
+            if deficit_h <= 0.0:
+                # It fits in the coming band after all, and we are inside the
+                # margin rather than genuinely late: wait for it.
+                pace = amps_over(band_hours)
+                return False, pace, band_wait, (
+                    f"aspetto la fascia economica fra {band_wait:.1f}h: "
+                    f"da allora {pace:.0f}A bastano per la scadenza"
+                )
+
+            pre_amps = reference_current * deficit_h / band_wait
+            if pre_amps < charger_min_current:
+                # Less than the charger can even deliver. Running it at its
+                # floor would buy day-rate energy to save a trickle; the band
+                # takes the difference, above the reference if it must.
+                pace = amps_over(band_hours)
+                return False, pace, band_wait, (
+                    f"aspetto la fascia economica fra {band_wait:.1f}h: manca poco, "
+                    f"meglio {pace:.0f}A in fascia che {charger_min_current:.0f}A adesso"
+                )
+
+            # Capped at the reference: the leg before the band is the expensive
+            # one, so it carries no more than the baseline and the band -- which
+            # may then run above it -- takes the rest. That is what makes the
+            # baseline a baseline rather than a target.
+            pre_amps = min(pre_amps, reference_current, charger_max_current)
+            return True, pre_amps, 0.0, (
+                f"{pre_amps:.0f}A adesso: la fascia da sola non basta, mi porto "
+                f"avanti {deficit_h:.1f}h di carica e dalle {band_start_hour:.0f} salgo"
+            )
+
         horizon = hours_until_deadline
-        hours_to_close = (band_end_hour - now_hour) % 24.0
-        # Finishing inside the band is worth a little more current, but only when
-        # the band can carry the whole charge at the reference rate. Otherwise
-        # the deadline is the honest horizon.
-        if 0.0 < hours_to_close < horizon and h_ref_safe <= hours_to_close:
-            horizon = hours_to_close
+        if band_wait is not None and now_hour is not None:
+            # Inside the band: finishing before it closes is worth a little more
+            # current, but only when the window can carry the whole charge.
+            hours_to_close = (band_end_hour - now_hour) % 24.0
+            if 0.0 < hours_to_close < horizon and h_ref_safe <= hours_to_close:
+                horizon = hours_to_close
         pace = amps_over(horizon)
-        return True, pace, 0.0, f"fascia economica aperta, passo {pace:.0f}A"
+        if band_wait is not None:
+            return True, pace, 0.0, f"fascia economica aperta, passo {pace:.0f}A"
+        return True, pace, 0.0, f"passo {pace:.0f}A per arrivare in orario"
 
-    # -- The band is still to come ------------------------------------------
-    band_hours = max(0.0, hours_until_deadline - band_wait)
-
-    # Can the band carry the whole charge at the reference current? The margin is
-    # on this side of the comparison, so the "band is enough" case really does
-    # stay at or below the reference instead of asking for 10% more than it.
-    if h_ref_safe <= band_hours:
-        pace = amps_over(band_hours)
-        return False, pace, band_wait, (
-            f"aspetto la fascia economica fra {band_wait:.1f}h: "
+    # -- Waiting ------------------------------------------------------------
+    pace = amps_over(hours_until_deadline - start_in)
+    if waiting_for_band:
+        nights_off = int(start_in / 24.0)
+        when = f"fra {start_in:.1f}h" if nights_off == 0 else (
+            f"fra {nights_off} notti ({start_in:.0f}h)"
+        )
+        return False, pace, start_in, (
+            f"aspetto la fascia economica {when}: "
             f"da allora {pace:.0f}A bastano per la scadenza"
         )
-
-    # The hours of charging the band cannot absorb, and the current that fits
-    # them into the time left before it opens.
-    deficit_h = h_ref_safe - band_hours
-    pre_amps = reference_current * deficit_h / band_wait
-
-    if pre_amps < charger_min_current:
-        # Less than the charger can even deliver. Running it at its floor would
-        # buy day-rate energy to save a trickle; the band takes the difference.
-        pace = amps_over(band_hours)
-        return False, pace, band_wait, (
-            f"aspetto la fascia economica fra {band_wait:.1f}h: manca poco, "
-            f"meglio {pace:.0f}A in fascia che {charger_min_current:.0f}A adesso"
-        )
-
-    # Capped at the reference current: the leg before the band is the expensive
-    # one, so it carries no more than the baseline and the band -- which may
-    # then run above it -- takes the rest. Cheaper, and it is what makes the
-    # baseline a baseline rather than a target.
-    pre_amps = min(pre_amps, reference_current, charger_max_current)
-    return True, pre_amps, 0.0, (
-        f"{pre_amps:.0f}A adesso: la fascia da sola non basta, mi porto avanti "
-        f"{deficit_h:.1f}h di carica e dalle {band_start_hour:.0f} salgo"
+    return False, pace, start_in, (
+        f"posso partire fra {start_in:.1f}h a {pace:.0f}A e arrivare in orario"
     )
 
 

@@ -121,20 +121,44 @@ def test_a_car_too_empty_starts_before_the_band():
     print("[OK] la scadenza batte la tariffa, ma al massimo alla baseline")
 
 
-def test_a_small_shortfall_waits_instead_of_trickling():
-    """Running the charger at its floor to save a trickle is not worth day rate."""
-    print("\n=== Ammanco piccolo: meglio aspettare ===")
+def test_the_band_never_pushes_the_pace_past_the_reference():
+    """When the band cannot do it at the reference, start earlier -- not harder.
 
-    # Five hours before the band, a shortfall that would need under 6 A to cover.
+    This asserted the opposite: that a charge the band could not carry at the
+    reference should wait for the band anyway and run above it. That is the
+    cheaper plan in kWh, and it is not the one asked for -- the reference is what
+    the owner is willing to charge at, so the answer to "the band is not enough"
+    is an earlier start, not a bigger current.
+    """
+    print("\n=== Se la fascia non basta, si parte prima, non piu' forte ===")
+
+    # Five hours before the band, with more charge needed than it can hold.
     charge_now, pace, start_in, why = _plan(17.0, 14.0, 34.0)
     print("  alle 17:00, SOC 34%% -> carico=%s, fra %s h, a %.1f A"
           % (charge_now, ("%.1f" % start_in) if start_in is not None else "-", pace))
     print("     %s" % why)
+    assert pace <= REFERENCE + 0.01, "oltre la baseline: %.1f A" % pace
     if not charge_now:
-        assert pace > REFERENCE, (
-            "se aspetta, la fascia deve poi andare sopra la baseline: %.1f A" % pace
+        # It may wait, but only until the moment the reference still suffices --
+        # which is before the band opens, not after.
+        assert start_in < 5.0, (
+            "aspetta la fascia (%0.1fh) che non puo' farcela alla baseline" % start_in
         )
-        print("[OK] aspetta e recupera in fascia, sopra la baseline")
+    print("[OK] la baseline resta un tetto, e l'attesa non supera il momento utile")
+
+
+def test_a_shortfall_too_small_to_charge_waits():
+    """Below the charger's minimum there is nothing useful to do but wait."""
+    print("\n=== Ammanco sotto il minimo del caricatore ===")
+
+    # Just inside the margin, with the band an hour away: the deficit is real
+    # but tiny, and 6 A of day-rate energy to cover it is a bad trade.
+    charge_now, pace, start_in, why = _plan(21.0, 10.0, 49.0)
+    print("  alle 21:00, SOC 49%% -> carico=%s, a %.1f A" % (charge_now, pace))
+    print("     %s" % why)
+    if not charge_now:
+        assert start_in is not None and start_in <= 1.01, start_in
+        print("[OK] aspetta la fascia invece di gocciolare a tariffa piena")
     else:
         assert pace >= CHARGER_MIN
         print("[OK] parte, e il tratto caro resta al minimo utile")
@@ -155,6 +179,35 @@ def test_falling_behind_raises_the_pace():
     print("  all'01:00 ma gia' all'85%%: %.1f A" % pace_ahead)
     assert pace_ahead < pace_22, (pace_ahead, pace_22)
     print("[OK] sale se serve, scende se siamo in anticipo")
+
+
+def test_a_far_deadline_does_not_buy_grid_energy_tonight():
+    """The regression: a Wednesday deadline started charging on Saturday night.
+
+    0.8.0 took the *first* band opening, so a deadline three days out began
+    drawing from the grid as soon as the cheap hours began -- buying energy that
+    three days of sun would have covered for nothing. Free beats cheap, and the
+    band is only meant to decide where inside the night a necessary charge goes.
+    """
+    print("\n=== Una scadenza lontana non compra rete stasera ===")
+
+    # Saturday 13:47, deadline Wednesday 06:59: 89 hours out, 42% SOC.
+    charge_now, pace, start_in, why = _plan(13.78, 89.2, 42.0)
+    print("  carico=%s, fra %.0f h, a %.1f A" % (charge_now, start_in or 0.0, pace))
+    print("     %s" % why)
+    assert not charge_now, "non deve toccare la rete con 89 ore di margine"
+    # Tonight's band opens in 8.2 h; the plan must look past it.
+    assert start_in > 24.0, (
+        "parte stasera (fra %.1fh) con la scadenza fra 3 giorni" % start_in
+    )
+
+    # And it must still be a band opening, not just "as late as possible".
+    hours_into_day = (13.78 + start_in) % 24.0
+    print("  parte alle %.0f:%02d" % (hours_into_day, (hours_into_day % 1) * 60))
+    assert abs(hours_into_day - BAND_START) < 0.05 or (
+        hours_until_band_open(hours_into_day, BAND_START, BAND_END) == 0.0
+    ), hours_into_day
+    print("[OK] guarda oltre la prima fascia, e resta in fascia")
 
 
 def test_target_reached_is_not_a_deadline():
@@ -270,8 +323,10 @@ if __name__ == "__main__":
     test_band_window_arithmetic()
     test_the_night_of_2026_11_17()
     test_a_car_too_empty_starts_before_the_band()
-    test_a_small_shortfall_waits_instead_of_trickling()
+    test_the_band_never_pushes_the_pace_past_the_reference()
+    test_a_shortfall_too_small_to_charge_waits()
     test_falling_behind_raises_the_pace()
+    test_a_far_deadline_does_not_buy_grid_energy_tonight()
     test_target_reached_is_not_a_deadline()
     test_without_a_band_the_old_rule_stands()
     test_the_pace_always_arrives()

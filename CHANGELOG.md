@@ -1,5 +1,24 @@
 # EV Control - Changelog
 
+## Version 0.8.2
+
+### Fixed
+- **The tariff band pulled grid charging forward by days.** 0.8.0 started a
+  deadline charge as soon as the cheap band opened. For a deadline tonight that
+  is right; for a deadline on Wednesday it bought grid energy on Saturday that
+  three days of sun would have covered for nothing. Free beats cheap. The start
+  is now the *latest* band opening that still leaves enough time, which for a
+  far-off deadline is a band two or three nights away -- where the original
+  latest-safe-start rule put it.
+- **The band looked longer than it is.** Its capacity was measured as all the
+  time between its opening and the deadline, so the daylight between two nights
+  counted as cheap: a deadline 36 hours out looked like 28 hours of cheap
+  charging when the real figure was 18. It is now bounded by the window length.
+- **When the band cannot carry the charge at the reference current, the charge
+  starts earlier rather than running harder.** It used to wait for the band and
+  pace above the reference, which is cheaper in kWh but ignores that the
+  reference is the current the owner is willing to charge at.
+
 ## Version 0.8.1
 
 ### Fixed
